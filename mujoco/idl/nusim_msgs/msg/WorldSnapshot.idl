@@ -1,0 +1,80 @@
+// NUSim-owned contract, independent of Booster wire layouts.
+// Version 1 semantics: docs/MULTI_ROBOT_DATA_CONTRACT.md.
+module nusim_msgs {
+    module msg {
+        module dds_ {
+            struct SnapshotStamp_ {
+                unsigned long schema_version;
+                char session_id[36]; // UUID text without a terminator
+                unsigned long long reset_generation;
+                unsigned long long sample_sequence;
+                unsigned long long step_count;
+                double sim_time;
+                unsigned long long capture_time_unix_ns;
+            };
+
+            struct RobotIdentity_ {
+                unsigned short robot_id;
+                unsigned short model_index;
+                unsigned short team_id;
+                unsigned short player_id;
+            };
+
+            struct TeamFrame_ {
+                unsigned short team_id;
+                boolean attacks_positive_x;
+            };
+
+            struct BodyTruth_ {
+                double position_s[3];
+                double orientation_body_to_s[4]; // unit quaternion w,x,y,z
+                double linear_velocity_s[3];     // velocity of body origin, not centre of mass
+                double angular_velocity_s[3];
+            };
+
+            struct BallTruth_ {
+                boolean valid;
+                double centre_s[3];             // geom centre, not free-body origin
+                double linear_velocity_s[3];    // velocity at the geom centre
+                double angular_velocity_s[3];
+            };
+
+            struct JointSample_ {
+                double q;
+                double dq;
+                double ddq;
+                double tau;
+            };
+
+            struct ImuSample_ {
+                double orientation_imu_to_s[4]; // unit quaternion w,x,y,z
+                double gyro_imu[3];
+                double acceleration_imu[3];     // accelerometer specific force, includes support against gravity
+            };
+
+            struct HeadSample_ {
+                boolean valid;
+                double position_footprint[3];
+                double orientation_head_to_footprint[4]; // unit quaternion w,x,y,z
+            };
+
+            struct RobotTruth_ {
+                RobotIdentity_ identity;
+                BodyTruth_ torso;
+                JointSample_ joints[22];         // JointIndexK1 serial order
+                ImuSample_ imu;
+                HeadSample_ head;
+                long mode;
+                long fall_state;
+                boolean getting_up;
+            };
+
+            struct WorldSnapshot_ {
+                SnapshotStamp_ stamp;
+                TeamFrame_ teams[2];
+                BallTruth_ ball;
+                sequence<RobotTruth_, 22> robots;
+            };
+        };
+    };
+};

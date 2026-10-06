@@ -10,6 +10,7 @@
 #include "shared/k1/BoosterApi.hpp"
 #include "shared/sim/FreeBody.hpp"
 #include "shared/sim/HeadPose.hpp"
+#include "shared/sim/RobotIdentity.hpp"
 #include "shared/util/Config.hpp"
 
 namespace k1sim {
@@ -73,13 +74,6 @@ namespace k1sim {
 #endif
         }
 
-        // Name prefix for the k-th extra robot's joints/actuators/bodies (k starts at 1).
-        std::string extra_prefix(int k) {
-            char buf[16];
-            std::snprintf(buf, sizeof(buf), "sub%02d_", k);
-            return buf;
-        }
-
         // Standing base height of the "ready" pose; game spawns and the extra_spawn grid use it.
         constexpr double STAND_Z = 0.555;
 
@@ -135,7 +129,7 @@ namespace k1sim {
                 frame->pos[1]        = pos[1];
                 frame->pos[2]        = pos[2];
                 mjsBody* trunk       = mjs_findBody(robot, "Trunk");
-                mjsElement* attached = mjs_attach(frame->element, trunk->element, extra_prefix(k).c_str(), "");
+                mjsElement* attached = mjs_attach(frame->element, trunk->element, robot_prefix(k).c_str(), "");
                 if (attached == nullptr) {
                     const std::string what = std::string("mjs_attach failed for robot copy ") + std::to_string(k) + ": "
                                              + mjs_getError(scene);
@@ -226,7 +220,7 @@ namespace k1sim {
         // upright. Only the three per-joint index arrays are needed.
         extra_maps_.clear();
         for (int k = 1; k < config_.robots; ++k) {
-            const std::string prefix = extra_prefix(k);
+            const std::string prefix = robot_prefix(k);
             ModelMap em{};
             for (std::size_t i = 0; i < JOINT_COUNT; ++i) {
                 const std::string name = prefix + JOINT_NAMES[i];

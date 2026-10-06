@@ -224,6 +224,7 @@ MuJoCo remains the default for this interactive simulator.
 | `mujoco/docker/` | Toolchain image + `k1sim.sh` (the container workflow `./b` wraps). |
 | `docs/K1_MUJOCO_SETUP.md` | Setup, config reference, end-to-end with `NUbots_K1`, and troubleshooting. |
 | `docs/OBS_ACTION_CONTRACT.md` | ONNX policy interface contract (obs/action layout the sim expects). |
+| [docs/MULTI_ROBOT_DATA_CONTRACT.md](docs/MULTI_ROBOT_DATA_CONTRACT.md) | Multi-robot roster and ground-truth snapshot contract; runtime integration pending. |
 | `mujoco/module/SdkBridge/PROTOCOL.md` | Booster SDK DDS wire surface: topics, message layouts, RPC `api_id`s. |
 
 Forked from [NUWebots](https://github.com/NUbots/NUWebots); the Webots/NUgus simulation has been removed in

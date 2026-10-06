@@ -1,0 +1,15 @@
+# Step 1 roster example for --game 3. Not yet consumed by the simulator launcher.
+# List order is model order: original K1, sub01_, ... sub05_.
+schema_version: 1
+teams:
+  - team_id: 125
+    initial_attacks_positive_x: true
+  - team_id: 126
+    initial_attacks_positive_x: false
+robots:
+  - {robot_id: 1, team_id: 125, player_id: 1, dds_domain: 0}
+  - {robot_id: 2, team_id: 125, player_id: 2, dds_domain: 1}
+  - {robot_id: 3, team_id: 125, player_id: 3, dds_domain: 2}
+  - {robot_id: 4, team_id: 126, player_id: 1, dds_domain: 3}
+  - {robot_id: 5, team_id: 126, player_id: 2, dds_domain: 4}
+  - {robot_id: 6, team_id: 126, player_id: 3, dds_domain: 5}
