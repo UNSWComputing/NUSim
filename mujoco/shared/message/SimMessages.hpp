@@ -4,6 +4,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <mujoco/mujoco.h>
 #include <mutex>
 #include <vector>
@@ -90,6 +91,10 @@ namespace k1sim::message {
         mjData* data                      = nullptr;
         std::mutex* mutex                 = nullptr;
         std::atomic<double>* measured_rtf = nullptr;
+        // Caller holds mutex. Clear the relocated robot's controller and signal its reset.
+        std::function<void(int)> placed_robot;
+        // Acquires mutex internally; call before acquiring the physics lock.
+        std::function<void()> reset_world;
     };
 
 }  // namespace k1sim::message

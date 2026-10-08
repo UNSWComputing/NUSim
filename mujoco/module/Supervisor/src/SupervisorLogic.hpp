@@ -28,6 +28,7 @@ namespace k1sim::module::supervisor {
         struct Action {
             enum class Level { INFO, WARN } level = Level::INFO;
             std::string message;
+            int robot_id = 0;
         };
 
         // Diffs `pkt` against the last packet seen (or, on the very first call,
@@ -199,11 +200,12 @@ namespace k1sim::module::supervisor {
                                 rc.penalty_pose.z,
                                 rc.penalty_pose.yaw);
                 actions.push_back({Action::Level::INFO,
-                                   rc.body + " penalised (" + gc::penalty_state_name(new_ps) + ") -> side line"});
+                                   rc.body + " penalised (" + gc::penalty_state_name(new_ps) + ") -> side line",
+                                   rc.robot_id});
             }
             else {
                 place_free_body(m, d, body_id, rc.home_pose.x, rc.home_pose.y, rc.home_pose.z, rc.home_pose.yaw);
-                actions.push_back({Action::Level::INFO, rc.body + " unpenalised -> own half"});
+                actions.push_back({Action::Level::INFO, rc.body + " unpenalised -> own half", rc.robot_id});
             }
         }
 

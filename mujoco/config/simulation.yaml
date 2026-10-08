@@ -65,3 +65,6 @@ surface:
 # foot frame, so flat-footed stance sits near cop_x = 0.026 and a foot up on its toe
 # drives cop_x towards +0.116 -- that is the tiptoe measurement.
 foot_log: ""
+
+# Optional loopback scenario UDP port; 0 disables it. Used by the six-player launcher.
+scenario_port: 0

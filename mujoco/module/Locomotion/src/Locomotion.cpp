@@ -65,6 +65,15 @@ namespace k1sim::module {
         on<Trigger<VisualKickRequest>>().then(
             [this](const VisualKickRequest&) { warn_once(kick_warned_, "VisualKick"); });
 
+        on<Every<1, std::chrono::seconds>>().then([this] {
+            for (std::size_t i = 0; i < controllers_.size(); ++i)
+                log<NUClear::LogLevel::INFO>("CONTROL_METRICS robot",
+                                             i + 1,
+                                             "mailbox_to_apply_ms",
+                                             controllers_[i]->command_latency_ms(),
+                                             "samples",
+                                             controllers_[i]->command_samples());
+        });
         on<Shutdown>().then([this] { log<NUClear::LogLevel::INFO>("Locomotion shutting down"); });
     }
 

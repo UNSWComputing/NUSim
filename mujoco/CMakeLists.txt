@@ -91,11 +91,17 @@ foreach(role_file ${role_files})
 endforeach()
 
 # Legacy single-binary entry (kept during the roles transition; exercised by the contract test). Equivalent to the
-# sim/soccer role minus Camera/Supervisor.
+# sim/soccer role minus Camera.
 add_executable(k1_mujoco_sim src/main.cpp)
 target_link_libraries(
-  k1_mujoco_sim PRIVATE k1sim_module_consolelog k1sim_module_simulation k1sim_module_sdkbridge k1sim_module_locomotion
-                        k1sim_module_viewer k1sim_shared
+  k1_mujoco_sim
+  PRIVATE k1sim_module_consolelog
+          k1sim_module_simulation
+          k1sim_module_sdkbridge
+          k1sim_module_locomotion
+          k1sim_module_supervisor
+          k1sim_module_viewer
+          k1sim_shared
 )
 
 enable_testing()

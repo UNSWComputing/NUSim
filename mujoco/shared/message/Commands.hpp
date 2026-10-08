@@ -14,6 +14,11 @@
 
 namespace k1sim::message {
 
+    struct VideoRecordRequest {
+        std::string path;
+        double duration = 180.;
+    };
+
     struct WalkCommand {  // ApiId::MOVE {"vx","vy","vyaw"} — body-frame velocities
         double vx    = 0.0;
         double vy    = 0.0;

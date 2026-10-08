@@ -1,7 +1,9 @@
 #include "module/Simulation/src/Simulation.hpp"
 
+#include <cmath>
 #include <cstddef>
 #include <mujoco/mujoco.h>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <utility>
 
@@ -76,6 +78,8 @@ namespace k1sim::module {
             handles->data         = sim_->data();
             handles->mutex        = &sim_->mutex();
             handles->measured_rtf = &sim_->measured_rtf();
+            handles->reset_world  = [this] { sim_->reset(); };
+            handles->placed_robot = [this](int id) { sim_->placed_robot_locked(id); };
             emit(handles);
 
             log<NUClear::LogLevel::INFO>("Simulation ready (scene",
@@ -103,6 +107,51 @@ namespace k1sim::module {
                 sim_->set_controller(handle.controller);
             }
             log<NUClear::LogLevel::INFO>("Simulation: controller attached for robot", handle.robot_id);
+        });
+
+        // Opt-in loopback-only scenario control; absent in normal simulator runs.
+        const int scenario_port = config::load("simulation.yaml")["scenario_port"].as<int>(0);
+        if (scenario_port) {
+            on<UDP, Single>(scenario_port).then([this](const UDP::Packet& packet) {
+                if (packet.remote.address != "127.0.0.1")
+                    return;
+                try {
+                    const auto request = nlohmann::json::parse(packet.payload.begin(), packet.payload.end());
+                    const auto action  = request.at("action").get<std::string>();
+                    if (action == "reset")
+                        sim_->reset();
+                    else if (action == "fall")
+                        sim_->topple_robot(request.at("robot_id").get<int>());
+                    else if (action == "record") {
+                        auto video      = std::make_unique<message::VideoRecordRequest>();
+                        video->path     = request.at("path").get<std::string>();
+                        video->duration = request.at("duration").get<double>();
+                        if (video->path.empty() || !std::isfinite(video->duration) || video->duration <= 0.)
+                            return;
+                        emit(std::move(video));
+                    }
+                    else if (action == "ball") {
+                        const double x = request.at("x"), y = request.at("y");
+                        if (!std::isfinite(x) || !std::isfinite(y))
+                            return;
+                        sim_->relocate_ball(x, y);
+                    }
+                    else
+                        return;
+                    log<NUClear::LogLevel::INFO>("SCENARIO applied", request.dump());
+                }
+                catch (const std::exception& e) {
+                    log<NUClear::LogLevel::WARN>("SCENARIO rejected", e.what());
+                }
+            });
+        }
+        on<Every<1, std::chrono::seconds>>().then([this] {
+            log<NUClear::LogLevel::INFO>("SIM_METRICS rtf",
+                                         sim_->measured_rtf().load(),
+                                         "physics_step_ms",
+                                         sim_->physics_step_ms(),
+                                         "dropped_deadlines",
+                                         sim_->dropped_deadlines());
         });
 
         // Viewer Backspace restores the world and clears every controller.

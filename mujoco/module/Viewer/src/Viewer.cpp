@@ -2,15 +2,19 @@
 
 #include <GLFW/glfw3.h>
 #include <atomic>
+#include <cmath>
 #include <cstdio>
 #include <functional>
+#include <memory>
 #include <mujoco/mujoco.h>
 #include <mutex>
 
+#include "VideoRecorder.hpp"
 #include "shared/CliOptions.hpp"
 #include "shared/k1/BoosterApi.hpp"
 #include "shared/message/Commands.hpp"
 #include "shared/message/SimMessages.hpp"
+#include "shared/util/RobotRoster.hpp"
 
 namespace k1sim::module {
 
@@ -31,6 +35,11 @@ namespace k1sim::module {
         mjvScene scn;
         mjrContext con;
         bool scene_ready = false;
+        std::unique_ptr<VideoRecorder> video;
+        std::vector<unsigned char> video_rgb;
+        NUClear::clock::time_point video_start;
+        int video_frames = 0, video_limit = 0;
+        std::vector<RobotIdentity> video_roster;
 
         // Cached from SimHandles (Trigger<SimHandles, MainThread>, set once after the
         // model loads). model/data/mutex are owned by module::Simulation.
@@ -298,6 +307,36 @@ namespace k1sim::module {
             }
         });
 
+        on<Trigger<message::VideoRecordRequest>, MainThread>().then([this](const message::VideoRecordRequest& request) {
+            if (!scene_ready || video) {
+                log<NUClear::LogLevel::ERROR>("Video requires a ready viewer and no existing recording");
+                return;
+            }
+            try {
+                video_roster = config::robot_roster();
+                video        = std::make_unique<VideoRecorder>(request.path);
+                video_rgb.resize(VideoRecorder::width * VideoRecorder::height * 3);
+                mjr_resizeOffscreen(VideoRecorder::width, VideoRecorder::height, &con);
+                cam.lookat[0] = cam.lookat[1] = cam.lookat[2] = 0.;
+                cam.distance                                  = 12.5;
+                cam.azimuth                                   = 90.;
+                cam.elevation                                 = -80.;
+                video_frames                                  = 0;
+                video_limit                                   = int(std::ceil(request.duration * VideoRecorder::fps));
+                video_start                                   = NUClear::clock::now();
+                log<NUClear::LogLevel::INFO>("VIDEO started",
+                                             request.path,
+                                             "frames",
+                                             video_limit,
+                                             "encoder_pid",
+                                             video->pid());
+            }
+            catch (const std::exception& error) {
+                video.reset();
+                log<NUClear::LogLevel::ERROR>("VIDEO failed", error.what());
+            }
+        });
+
         // Overlay-only telemetry — never touches mjData, so no MainThread/mutex needed.
         on<Trigger<message::SimStateUpdate>>().then([](const message::SimStateUpdate& state) {
             g_sim_time.store(state.sim_time, std::memory_order_relaxed);
@@ -331,6 +370,27 @@ namespace k1sim::module {
                     }
                 }
                 mjv_updateScene(g_model, g_data, &opt, &pert, &cam, mjCAT_ALL, &scn);
+                if (video) {
+                    for (const auto& robot : video_roster) {
+                        const int body = mj_name2id(g_model, mjOBJ_BODY, robot.body().c_str());
+                        if (body < 0 || scn.ngeom >= scn.maxgeom)
+                            continue;
+                        const mjtNum size[3] = {0., 0., 0.};
+                        const mjtNum pos[3]  = {g_data->xpos[3 * body],
+                                                g_data->xpos[3 * body + 1],
+                                                g_data->xpos[3 * body + 2] + .5};
+                        const mjtNum mat[9]  = {1., 0., 0., 0., 1., 0., 0., 0., 1.};
+                        const float blue[4] = {.2f, .55f, 1.f, 1.f}, red[4] = {1.f, .3f, .25f, 1.f};
+                        auto& label = scn.geoms[scn.ngeom++];
+                        mjv_initGeom(&label,
+                                     mjGEOM_LABEL,
+                                     size,
+                                     pos,
+                                     mat,
+                                     robot.team_id == video_roster.front().team_id ? blue : red);
+                        std::snprintf(label.label, sizeof(label.label), "%d/%d", robot.team_id, robot.player_id);
+                    }
+                }
             }
 
             int width  = 0;
@@ -352,11 +412,51 @@ namespace k1sim::module {
                 mjr_overlay(mjFONT_NORMAL, mjGRID_TOPLEFT, viewport, overlay, nullptr, &con);
             }
 
+            if (scene_ready && video) {
+                const int due = std::min(
+                    video_limit,
+                    int(std::chrono::duration<double>(NUClear::clock::now() - video_start).count() * VideoRecorder::fps)
+                        + 1);
+                if (due > video_frames) {
+                    mjr_setBuffer(mjFB_OFFSCREEN, &con);
+                    const mjrRect recording{0, 0, VideoRecorder::width, VideoRecorder::height};
+                    mjr_render(recording, &scn, &con);
+                    char caption[128];
+                    std::snprintf(caption,
+                                  sizeof(caption),
+                                  "NUSim native 3v3 | six independent players\nsim time %.1f s | RTF %.2f",
+                                  g_sim_time.load(),
+                                  g_measured_rtf ? g_measured_rtf->load() : 0.);
+                    mjr_overlay(mjFONT_NORMAL, mjGRID_TOPLEFT, recording, caption, nullptr, &con);
+                    mjr_readPixels(video_rgb.data(), nullptr, recording, &con);
+                    mjr_setBuffer(mjFB_WINDOW, &con);
+                    try {
+                        while (video_frames < due) {
+                            video->write(video_rgb);
+                            ++video_frames;
+                        }
+                        if (video_frames == video_limit) {
+                            const bool ok = video->finish();
+                            video.reset();
+                            log<NUClear::LogLevel::INFO>("VIDEO finished", video_frames, "frames, encoder success", ok);
+                        }
+                    }
+                    catch (const std::exception& error) {
+                        video.reset();
+                        log<NUClear::LogLevel::ERROR>("VIDEO failed", error.what());
+                    }
+                }
+            }
+
             glfwSwapBuffers(window);
         });
 
         on<Shutdown, MainThread>().then([this] {
             if (!cli().headless) {
+                if (video) {
+                    video->finish();
+                    video.reset();
+                }
                 if (scene_ready) {
                     mjv_freeScene(&scn);
                     mjr_freeContext(&con);

@@ -5,6 +5,7 @@
 #include "module/Locomotion/src/Locomotion.hpp"
 #include "module/SdkBridge/src/SdkBridge.hpp"
 #include "module/Simulation/src/Simulation.hpp"
+#include "module/Supervisor/src/Supervisor.hpp"
 #include "module/Viewer/src/Viewer.hpp"
 #include "shared/CliOptions.hpp"
 #include "shared/gl/XThreads.hpp"
@@ -28,10 +29,12 @@ int main(int argc, char** argv) {
     // NUClear does not auto-install the chrono extension; without it no Every<>
     // reaction (viewer tick, battery publisher) ever fires.
     plant.install<NUClear::extension::ChronoController>();
+    plant.install<NUClear::extension::IOController>();
     plant.install<k1sim::module::ConsoleLog>();
     plant.install<k1sim::module::Simulation>();
     plant.install<k1sim::module::Locomotion>();
     plant.install<k1sim::module::SdkBridge>();
+    plant.install<k1sim::module::Supervisor>();
     plant.install<k1sim::module::Viewer>();
 
     std::signal(SIGINT, handle_signal);

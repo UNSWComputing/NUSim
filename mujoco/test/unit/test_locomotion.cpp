@@ -340,6 +340,37 @@ namespace {
         mj_deleteModel(m);
     }
 
+    void test_command_timeout_and_latency() {
+        mjModel* m = load_test_model();
+        mjData* d  = mj_makeData(m);
+        reset_to_keyframe(m, d, "ready");
+        const auto gains              = gains_cfg();
+        auto target                   = load_joint_array(gains["ready_pose"]);
+        target[JointIndexK1::HeadYaw] = .4;
+        const auto motors      = make_low_cmd(target, load_joint_array(gains["kp"]), load_joint_array(gains["kd"]));
+        auto cfg               = locomotion_cfg();
+        cfg["low_cmd_timeout"] = 1e-9;
+        LocomotionController stale(cfg, gains);
+        stale.request_mode_change(booster::CUSTOM);
+        stale.step(m, d);
+        stale.set_low_cmd(1, motors);
+        stale.step(m, d);
+        const auto map = ModelMap::build(m);
+        check(stale.command_samples() == 0, "expired command is not counted as physically applied");
+        check(std::abs(d->ctrl[map.act_id[JointIndexK1::HeadYaw]]) < 1e-6,
+              "timeout holds the current head pose instead of pursuing the expired target");
+        LocomotionController fresh(locomotion_cfg(), gains);
+        fresh.request_mode_change(booster::CUSTOM);
+        fresh.step(m, d);
+        fresh.set_low_cmd(1, motors);
+        fresh.step(m, d);
+        fresh.step(m, d);
+        check(fresh.command_samples() == 1, "new command is counted once, not at every physics step");
+        check(d->ctrl[map.act_id[JointIndexK1::HeadYaw]] > 0., "default one-shot command remains supported");
+        mj_deleteData(d);
+        mj_deleteModel(m);
+    }
+
 }  // namespace
 
 int main() {
@@ -348,6 +379,7 @@ int main() {
     test_custom_low_cmd();
     test_fall_detection();
     test_walking_maps_to_prepare();
+    test_command_timeout_and_latency();
 
     std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

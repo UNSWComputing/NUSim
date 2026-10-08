@@ -13,3 +13,6 @@ fall:
   fallen_height: 0.35 # m — base below this => HAS_FALLEN even if the trunk is upright
   # (collapsed/kneeling poses read IS_READY on tilt alone, which starves the
   # NUbots get-up retry loop; standing ~0.55, walking crouch >= 0.45)
+
+# Optional wall-clock servo command timeout (seconds); 0 preserves one-shot commands.
+low_cmd_timeout: 0.0

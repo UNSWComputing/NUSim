@@ -40,6 +40,7 @@ namespace k1sim::module::supervisor {
     // that team's players[] array (RoboCup convention: player 1..N).
     struct RobotConfig {
         std::string body;
+        int robot_id   = 1;
         int team_id    = -1;
         int team_index = 0;
         int player_id  = 1;
@@ -96,6 +97,7 @@ namespace k1sim::module::supervisor {
         if (const auto& robots = root["robots"]) {
             for (const auto& r : robots) {
                 RobotConfig rc;
+                rc.robot_id     = r["robot_id"].as<int>(1);
                 rc.body         = r["body"].as<std::string>();
                 rc.team_id      = r["team_id"].as<int>(rc.team_id);
                 rc.team_index   = r["team_index"].as<int>(rc.team_index);

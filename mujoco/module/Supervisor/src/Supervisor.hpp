@@ -23,6 +23,9 @@ namespace k1sim::module {
         explicit Supervisor(std::unique_ptr<NUClear::Environment> environment);
 
     private:
+        std::function<void(int)> placed_robot_;
+        std::function<void()> reset_world_;
+        int last_state_ = -1;
         // Decision logic (packet parsing + diffing + placement) — NUClear-free,
         // see SupervisorLogic.hpp. Owned via pointer only so it can be
         // constructed after config load, inside this constructor's body.

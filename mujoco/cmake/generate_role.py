@@ -48,6 +48,7 @@ lines += [
     "    NUClear::PowerPlant plant(config);",
     "",
     "    plant.install<NUClear::extension::ChronoController>();",
+    "    plant.install<NUClear::extension::IOController>();",
 ]
 for m in modules:
     lines.append(f"    plant.install<k1sim::module::{m}>();")

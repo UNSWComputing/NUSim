@@ -40,6 +40,8 @@ namespace k1sim::module {
         logic_               = std::make_unique<SupervisorLogic>(std::move(cfg));
 
         on<Trigger<message::SimHandles>>().then([this](const message::SimHandles& handles) {
+            placed_robot_ = handles.placed_robot;
+            reset_world_  = handles.reset_world;
             model_.store(handles.model, std::memory_order_release);
             data_.store(handles.data, std::memory_order_release);
             sim_mutex_.store(handles.mutex, std::memory_order_release);
@@ -116,10 +118,21 @@ namespace k1sim::module {
                     return;
                 }
 
+                if (last_state_ >= 0 && last_state_ != int(gc::State::INITIAL) && parsed.state == gc::State::INITIAL
+                    && reset_world_) {
+                    reset_world_();
+                    log<NUClear::LogLevel::INFO>("Supervisor: match reset -> startup poses and controllers");
+                }
+                last_state_ = int(parsed.state);
                 std::vector<SupervisorLogic::Action> actions;
                 {
                     std::lock_guard<std::mutex> lock(*sim_mutex);
                     actions = logic_->process(m, d, parsed);
+                    for (const auto& action : actions) {
+                        if (action.robot_id && placed_robot_)
+                            placed_robot_(action.robot_id);
+                    }
+                    mj_forward(m, d);
                 }
                 for (const auto& action : actions) {
                     if (action.level == SupervisorLogic::Action::Level::WARN) {

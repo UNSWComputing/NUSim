@@ -168,6 +168,35 @@ int main() {
         require(fall.robots[1].fall_state == booster::HAS_FALLEN && fall.robots[0].fall_state == booster::IS_READY,
                 "fall detection used another robot's pose");
         require(fall.robots[1].imu.quat != fall.robots[0].imu.quat, "fallen robot's IMU is not independent");
+        const auto before_scenario = sim.capture_states();
+        sim.relocate_ball(.75, -1.25);
+        auto relocated = sim.capture_states();
+        require(std::abs(relocated.ball_centre[0] - .75) < 1e-10 && std::abs(relocated.ball_centre[1] + 1.25) < 1e-10,
+                "scenario relocation did not place the ball centre");
+        for (int i = 0; i < 6; ++i) {
+            require(relocated.robots[i].base.x == before_scenario.robots[i].base.x
+                        && relocated.robots[i].reset_count == before_scenario.robots[i].reset_count,
+                    "ball relocation modified a robot");
+        }
+        for (int id = 1; id <= 6; ++id) {
+            const auto prior = sim.capture_states();
+            {
+                std::lock_guard<std::mutex> lock(sim.mutex());
+                sim.placed_robot_locked(id);
+            }
+            const auto placed = sim.capture_states();
+            for (int i = 0; i < 6; ++i) {
+                require(placed.robots[i].reset_count == prior.robots[i].reset_count + (i + 1 == id ? 1 : 0),
+                        "supervisor reset crossed robot identities");
+                if (i + 1 != id)
+                    require(placed.robots[i].mode == prior.robots[i].mode,
+                            "supervisor reset changed another controller");
+            }
+        }
+        sim.topple_robot(6);
+        sim.step_once();
+        require(sim.capture_states().robots[5].fall_state == booster::HAS_FALLEN,
+                "scenario fall did not reach selected robot sensor");
         sim.reset();
         const auto reset = sim.capture_states();
         require(sim.data()->time == 0.0 && sim.step_count() == 0, "full reset did not reset physics time");

@@ -119,6 +119,12 @@ namespace k1sim {
         // Restore only this robot's startup qpos/velocity/control and controller mailbox.
         // Leaves other robot state, the ball, world time and step counter untouched.
         void reset_robot(int robot_id);
+        void placed_robot_locked(int robot_id);
+        void relocate_ball(double x, double y);
+        void topple_robot(int robot_id);
+        double physics_step_ms() const {
+            return physics_steps_ ? double(physics_ns_) / physics_steps_ / 1e6 : 0.;
+        }
 
         // Deterministic stepping/capture for tools and integration tests. step_once() is
         // only allowed while stopped; capture_states() is safe while running.
@@ -196,6 +202,7 @@ namespace k1sim {
         std::thread thread_;
         std::atomic<uint64_t> step_count_{0};
         std::atomic<uint64_t> dropped_deadlines_{0};
+        std::atomic<uint64_t> physics_ns_{0}, physics_steps_{0};
 
         // Foot-contact CSV (Config::foot_log_path); nullptr when logging is off.
         std::FILE* foot_log_    = nullptr;

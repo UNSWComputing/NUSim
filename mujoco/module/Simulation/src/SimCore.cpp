@@ -586,6 +586,44 @@ namespace k1sim {
         mj_forward(m_, d_);
     }
 
+    void SimCore::placed_robot_locked(int robot_id) {
+        auto& robot = context(robot_id);
+        ++robot.reset_count;
+        if (robot.controller)
+            robot.controller->reset();
+    }
+
+    void SimCore::relocate_ball(double x, double y) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const int geom = mj_name2id(m_, mjOBJ_GEOM, "ball");
+        if (geom < 0)
+            throw std::runtime_error("ball missing");
+        const int joint = m_->body_jntadr[m_->geom_bodyid[geom]];
+        const int q = m_->jnt_qposadr[joint], v = m_->jnt_dofadr[joint];
+        d_->qpos[q]     = x - m_->geom_pos[3 * geom];
+        d_->qpos[q + 1] = y - m_->geom_pos[3 * geom + 1];
+        d_->qpos[q + 2] = m_->geom_size[3 * geom] - m_->geom_pos[3 * geom + 2];
+        d_->qpos[q + 3] = 1;
+        std::fill_n(d_->qpos + q + 4, 3, 0.);
+        std::fill_n(d_->qvel + v, 6, 0.);
+        mj_forward(m_, d_);
+    }
+
+    void SimCore::topple_robot(int robot_id) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto& robot = context(robot_id);
+        const int q = robot.map.root_qpos_adr;
+        // Deterministic prone placement, with no impulse applied to other robots.
+        d_->qpos[q + 2] = .25;
+        d_->qpos[q + 3] = std::sqrt(.5);
+        d_->qpos[q + 4] = 0;
+        d_->qpos[q + 5] = std::sqrt(.5);
+        d_->qpos[q + 6] = 0;
+        std::fill_n(d_->qvel + robot.map.root_dof_adr, 6, 0.);
+        placed_robot_locked(robot_id);
+        mj_forward(m_, d_);
+    }
+
     void SimCore::advance_locked() {
         for (auto& robot : robot_contexts_) {
             if (robot.controller) {
@@ -595,7 +633,12 @@ namespace k1sim {
                 robot.pd.apply(m_, d_, robot.map, robot.ready_target);
             }
         }
+        const auto began = std::chrono::steady_clock::now();
         mj_step(m_, d_);
+        physics_ns_.fetch_add(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - began).count(),
+            std::memory_order_relaxed);
+        physics_steps_.fetch_add(1, std::memory_order_relaxed);
         step_count_.fetch_add(1, std::memory_order_relaxed);
     }
 

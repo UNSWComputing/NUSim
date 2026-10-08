@@ -3,6 +3,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -65,6 +66,13 @@ namespace k1sim::module {
         void request_mode_change(int mode);
         void set_low_cmd(int cmd_type, std::vector<message::MotorCmdData> motors);
 
+        double command_latency_ms() const {
+            return latency_count_ ? double(latency_ns_) / latency_count_ / 1e6 : 0.;
+        }
+        uint64_t command_samples() const {
+            return latency_count_;
+        }
+
         // Test/introspection helper (harmless in production: read-only).
         bool is_initialized() const {
             return initialized_;
@@ -81,6 +89,8 @@ namespace k1sim::module {
             uint64_t mode_seq  = 0;
             int requested_mode = booster::DAMPING;
             int low_cmd_type   = 1;
+            uint64_t low_seq   = 0;
+            std::chrono::steady_clock::time_point low_received{};
             std::vector<message::MotorCmdData> low_cmd_motors;
         };
 
@@ -99,7 +109,10 @@ namespace k1sim::module {
 
         // -- config (parsed once at construction; no model needed) --
         std::string prefix_;
-        int initial_mode_ = booster::DAMPING;
+        int initial_mode_       = booster::DAMPING;
+        double low_cmd_timeout_ = 0.;
+        bool stale_hold_        = false;
+        std::array<double, JOINT_COUNT> stale_pose_{};
         double prepare_blend_time_;
         double falling_tilt_, fallen_tilt_, falling_gyro_, fallen_height_;
 
@@ -130,6 +143,9 @@ namespace k1sim::module {
         uint64_t mode_seq_  = 0;
         int requested_mode_ = booster::DAMPING;
         int low_cmd_type_   = 1;
+        uint64_t low_seq_ = 0, applied_low_seq_ = 0;
+        std::chrono::steady_clock::time_point low_received_{};
+        std::atomic<uint64_t> latency_ns_{0}, latency_count_{0};
         std::vector<message::MotorCmdData> low_cmd_motors_;
 
         // -- cross-thread-visible state --

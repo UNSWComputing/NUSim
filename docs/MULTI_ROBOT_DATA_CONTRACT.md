@@ -183,3 +183,8 @@ startup configuration; GameController half-change updates remain future work.
 See [Native motion-policy player](NATIVE_MOTION_PLAYER.md) for the companion build, behavioural
 checks and the adapter's current scope. Complete sensor kinematics and team communication remain
 necessary before enabling full competition behaviours.
+
+## Six-player sessions
+
+See [native 3v3 scenarios](SIX_PLAYER_SCENARIOS.md) for the launcher, GameController
+fan-out, per-robot placement/reset notifications and performance measurement scope.
