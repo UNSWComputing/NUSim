@@ -72,19 +72,33 @@ Roles: `sim/soccer` (full sim). Args after the role pass through to the binary:
 ./b run sim/soccer --robots 5                             # 4 extra K1s on the field (max 20 total)
 ```
 
-`--robots <n>` (1–20, default 1) attaches `n−1` extra K1 copies to the scene via MuJoCo's
-`mjSpec` attach API, each with a `subNN_` name prefix so the main robot's unprefixed
-joints/sensors (and every DDS/shm contract) are untouched. Extras spawn standing on a
-5×4 grid off the `y = 0` line (main-robot and ball spawn lane) and are PD-held at the
-`ready` pose — uncontrolled standing obstacles for dribbling/navigation practice. Sim
-resets (Backspace) re-place them. The `--keyframe` flag only affects the main robot.
+`--robots <n>` (1–20, default 1) attaches `n−1` K1 copies using MuJoCo's `mjSpec` API.
+Copies use `subNN_` model prefixes and start on a 5×4 grid clear of the main robot and ball.
+Every robot has its own controller, joints, IMU and head-pose stream. All controllers run before
+one shared physics step, so the robots still interact with the same ball and each other.
+The `--keyframe` flag sets the main robot's startup pose; copies start at `ready`.
 
-`--game <n>` (1–11 a side, from `simulation.yaml`'s `game`) loads the M-Field with `2n` K1s in
-place of `--field`/`--robots`: team 1 in the -x half, team 2 mirrored, lined up just off the
-touchlines two at a time on alternate sides, from level with the penalty mark towards halfway. Add `--on-field-positions` for kickoff positions instead: attacker, goalkeeper, left
-and right wing, then the 5th robot on spread evenly
-through the rest of the half. The main robot is team 1's first (the
-attacker), and the others are held at the ready pose like `--robots` extras.
+`--game <n>` (1–11 a side) loads `2n` robots on the match field, with team 1 in the -x half
+and team 2 mirrored. By default they line up off the touchlines. Add `--on-field-positions`
+for kickoff positions: attacker, goalkeeper, wings, then positions spread through the half.
+Model placement does not assign player behaviour roles.
+
+Each robot uses an independent DDS domain. Without a roster, the first uses `dds.yaml`'s
+`domain` and subsequent robots use consecutive domains. The default six-robot match uses
+0..5. A player process must initialise DDS with its assigned domain before any hardware
+module starts; companion player code that hardcodes domain 0 can still control only robot 1.
+The existing Booster topic names and messages are unchanged.
+
+To use the explicit team/player roster:
+
+```sh
+./b run sim/soccer --game 3 --match match_3v3.yaml --on-field-positions
+```
+
+`--match` paths are relative to the config directory unless absolute. The roster size must
+match `--game`; duplicate player identities or DDS domains are rejected. See the
+[multi-robot contract](MULTI_ROBOT_DATA_CONTRACT.md) for the domain mapping and reset API.
+Camera images still come from the main robot; every robot publishes its own `rt/head_pose`.
 
 > A new field goes in `simulation.yaml`'s `fields` and must point at a **scene** (`k1_scene_robocup.xml`,
 > `k1_scene_flat.xml`, or your own).
@@ -341,10 +355,10 @@ A GLFW + MuJoCo GPU-rendered window, skipped entirely under `--headless`. Standa
   real-time factor, and the current mode.
 - **F** shoves the robot over (adds root velocity under the sim mutex) — deterministic fall for testing
   FallRecovery/GetUp; mouse-drag perturbs are usually within what the push-randomised policy survives.
-- **Backspace** resets the simulation to its startup state (the model's `ready` keyframe: robot pose, ball
-  position, all velocities). Physics state only — the Locomotion controller keeps its current mode and last
-  commands, like picking a real robot up and placing it back on the start mark mid-program. (Viewer emits
-  `SimResetRequest`; `module::Simulation` handles it, so headless/scripted resets can emit the same message.)
+- **Backspace** restores the whole world to its configured startup pose and clears every controller's
+  mode/head/joint command buffers. Controllers return to `locomotion.yaml`'s `initial_mode`.
+  Headless modules can emit `SimResetRequest` for the same operation, or
+  `RobotResetRequest{robot_id}` to reset just one robot while preserving the others and world time.
 - Pausing physics from the viewer is **not** wired up (that's `module::Simulation`'s pacing thread, not the
   viewer's, and there's currently no pause switch to hook into) — noted here as future work, not a bug.
 

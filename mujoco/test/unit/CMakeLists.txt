@@ -13,6 +13,7 @@ foreach(test_src ${test_sources})
   set_tests_properties(${test_name} PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endforeach()
 set_tests_properties(test_dds_transport PROPERTIES TIMEOUT 20)
+set_tests_properties(test_multi_robot_dds PROPERTIES TIMEOUT 30)
 
 # macOS offscreen rendering must work on a worker thread without a window server API.
 if(APPLE)

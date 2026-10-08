@@ -10,6 +10,7 @@
 #include "shared/message/Commands.hpp"
 #include "shared/message/SimMessages.hpp"
 #include "shared/util/Config.hpp"
+#include "shared/util/RobotRoster.hpp"
 
 namespace k1sim::module {
 
@@ -30,6 +31,7 @@ namespace k1sim::module {
                 cfg.model_path = config::field_scene(sim_cfg, cli().field);
                 cfg.robots     = cli().robots;
             }
+            cfg.identities = config::robot_roster();
             cfg.initial_keyframe =
                 !cli().keyframe.empty() ? cli().keyframe : sim_cfg["initial_keyframe"].as<std::string>("ready");
             // CliOptions.rtf < 0 means "use config"; the config's real_time_factor may itself be 0
@@ -61,8 +63,10 @@ namespace k1sim::module {
         // Constructed here (not inside on<Startup>) — see the header comment on sim_.
         SimCore::Config sim_config = build_sim_config();
         const std::string scene    = sim_config.model_path;
-        sim_                       = std::make_unique<SimCore>(std::move(sim_config),
-                                         [this](std::unique_ptr<message::SimStateUpdate> state) { emit(state); });
+        sim_                       = std::make_unique<SimCore>(
+            std::move(sim_config),
+            [this](std::unique_ptr<message::SimStateUpdate> state) { emit(state); },
+            [this](std::unique_ptr<message::RobotStatesUpdate> states) { emit(states); });
 
         on<Startup>().then([this, scene] {
             sim_->load_model();
@@ -86,21 +90,35 @@ namespace k1sim::module {
                                          "controller attaches)");
 
             // Start immediately with the PD fallback engaged; if Locomotion's ControllerHandle
-            // arrives it is swapped in atomically by the Trigger reaction below — race-free, no
+            // arrives it is attached under the physics lock — no
             // need to wait for it (Locomotion may not even be installed, e.g. in unit tests).
             sim_->start();
         });
 
         on<Trigger<message::ControllerHandle>>().then([this](const message::ControllerHandle& handle) {
-            sim_->set_controller(handle.controller);
-            log<NUClear::LogLevel::INFO>("Simulation: controller attached");
+            if (handle.owner) {
+                sim_->set_robot_controller(handle.robot_id, handle.owner);
+            }
+            else if (handle.robot_id == 1) {
+                sim_->set_controller(handle.controller);
+            }
+            log<NUClear::LogLevel::INFO>("Simulation: controller attached for robot", handle.robot_id);
         });
 
-        // Viewer Backspace (or any other emitter): snap mjData back to the startup keyframe.
-        // Physics state only — the attached controller keeps its mode/commands (SimCore::reset).
+        // Viewer Backspace restores the world and clears every controller.
         on<Trigger<message::SimResetRequest>>().then([this] {
             sim_->reset();
             log<NUClear::LogLevel::INFO>("Simulation: state reset to startup keyframe");
+        });
+
+        on<Trigger<message::RobotResetRequest>>().then([this](const message::RobotResetRequest& req) {
+            try {
+                sim_->reset_robot(req.robot_id);
+                log<NUClear::LogLevel::INFO>("Simulation: reset robot", req.robot_id);
+            }
+            catch (const std::exception& error) {
+                log<NUClear::LogLevel::WARN>("Simulation: robot reset rejected:", error.what());
+            }
         });
 
         // Base-pose heartbeat: one INFO line every ~5 s of sim time (updates arrive at

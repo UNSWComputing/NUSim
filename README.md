@@ -105,12 +105,13 @@ Parsed in [`mujoco/shared/CliOptions.hpp`](mujoco/shared/CliOptions.hpp); `--hel
 | --- | --- | --- |
 | `--headless` | off | Run without the GLFW viewer window (CI / headless servers). Physics, DDS and the camera bridge all still run. |
 | `--field <name>` | `simulation.yaml`'s `field` (`middle`) | Field to play on, one of `simulation.yaml`'s `fields`: `middle` — the RoboCup 2026 Humanoid Soccer League M-Field (14 × 9 m), the field of the Middle Division the K1 plays in; `kidsize` — RoboCup KidSize under the pre-2026 rules (9 × 6 m); `no-field` — a bare flat floor with no field or ball. NUbots' `FieldDescription.yaml` `field_type` must match for localisation. |
-| `--game <n>` | none | A match of `n` robots a side, 1–11 (so 2–22 K1s), on `simulation.yaml`'s `game.field` (`middle`). Sets the field and robot count itself, so it can't be combined with `--field` or `--robots`. Team 1 is in the -x half, team 2 is its mirror image; by default each team lines up just off the touchlines facing into the field, two at a time on alternate sides, starting level with its penalty mark and filling towards the halfway line. The main robot is team 1's first. Only the main robot is controlled, the rest are PD-held at the `ready` pose like `--robots` extras. `--keyframe` still sets the main robot's pose, moved to its game spot. |
+| `--game <n>` | none | A match of `n` robots a side, 1–11 (so 2–22 K1s), on `simulation.yaml`'s `game.field` (`middle`). Sets the field and robot count itself, so it can't be combined with `--field` or `--robots`. Team 1 is in the -x half, team 2 is its mirror image; by default each team lines up just off the touchlines facing into the field, two at a time on alternate sides, starting level with its penalty mark and filling towards the halfway line. The main robot is team 1's first. Every robot has independent control, sensors and a DDS domain. `--keyframe` still sets the main robot's pose, moved to its game spot. |
 | `--on-field-positions` | off | With `--game`, start in kickoff positions facing the opponent's goal instead of on the touchlines: the attacker (the main robot), then the goalkeeper (2v2+), left wing (3v3+), right wing (4v4+), and the 5th to 11th robots spread evenly through the rest of the team's half (outside the centre circle). Positions are in `simulation.yaml`'s `game`. |
+| `--match <file>` | none | With `--game`, load team/player identities and per-robot DDS domains from a validated roster, relative to the config directory unless absolute. See [the multi-robot contract](docs/MULTI_ROBOT_DATA_CONTRACT.md). |
 | `--config-dir <dir>` | `mujoco/config` | Config directory to read the YAML from. |
 | `--keyframe <name>` | `ready` | Startup keyframe for the **main** robot (e.g. `lying_front` to start fallen and exercise the get-up chain). |
 | `--rtf <factor>` | `simulation.yaml`'s `real_time_factor` | Real-time factor; `0` = free-run (uncapped, for tests/sweeps). |
-| `--robots <n>` | `1` | **Total** K1s on the field, 1–20. `n−1` extra copies are attached via MuJoCo's `mjSpec` attach API with `subNN_` name prefixes, so the main robot's unprefixed joint/sensor names — and every DDS and shared-memory contract — are untouched. Extras spawn standing on a 5×4 grid clear of the `y = 0` main-robot/ball lane and are PD-held at the `ready` pose: uncontrolled obstacles for dribbling and navigation practice, not extra DDS endpoints. Sim resets re-place them; `--keyframe` does not apply to them. |
+| `--robots <n>` | `1` | **Total** K1s on the field, 1–20. `n−1` extra copies are attached via MuJoCo's `mjSpec` attach API with `subNN_` name prefixes, so the main robot's unprefixed joint/sensor names — and every DDS and shared-memory contract — are untouched. Extras spawn standing on a 5×4 grid clear of the `y = 0` main-robot/ball lane. Each has its own controller and DDS endpoint, holding `ready` until commanded. Sim resets re-place them; `--keyframe` does not apply to them. |
 | `--help`, `-h` | — | Print the flag list and exit. |
 
 ```bash
@@ -141,7 +142,7 @@ perturbation drags), plus:
 
 | Key | Action |
 | --- | --- |
-| `Backspace` | Reset the sim to its startup state (and re-place `--robots` extras). |
+| `Backspace` | Reset the world and all controllers to startup state, clearing previous commands. |
 | `F` | Shove the robot over — a deterministic topple for testing fall detection / `GetUp`, harder than a mouse-drag perturb, which the push-randomised policy usually rides out. |
 | `Esc` | Close the window. |
 
@@ -224,7 +225,7 @@ MuJoCo remains the default for this interactive simulator.
 | `mujoco/docker/` | Toolchain image + `k1sim.sh` (the container workflow `./b` wraps). |
 | `docs/K1_MUJOCO_SETUP.md` | Setup, config reference, end-to-end with `NUbots_K1`, and troubleshooting. |
 | `docs/OBS_ACTION_CONTRACT.md` | ONNX policy interface contract (obs/action layout the sim expects). |
-| [docs/MULTI_ROBOT_DATA_CONTRACT.md](docs/MULTI_ROBOT_DATA_CONTRACT.md) | Multi-robot roster and ground-truth snapshot contract; runtime integration pending. |
+| [docs/MULTI_ROBOT_DATA_CONTRACT.md](docs/MULTI_ROBOT_DATA_CONTRACT.md) | Multi-robot roster, independent control and sensors, and planned ground-truth snapshots. |
 | `mujoco/module/SdkBridge/PROTOCOL.md` | Booster SDK DDS wire surface: topics, message layouts, RPC `api_id`s. |
 
 Forked from [NUWebots](https://github.com/NUbots/NUWebots); the Webots/NUgus simulation has been removed in

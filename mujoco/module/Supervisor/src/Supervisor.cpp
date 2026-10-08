@@ -58,7 +58,7 @@ namespace k1sim::module {
                 }
                 const int ball_body  = mj_name2id(m, mjOBJ_BODY, ball_body_name.c_str());
                 const int ball_geom  = mj_name2id(m, mjOBJ_GEOM, ball_geom_name.c_str());
-                const int robot_body = mj_name2id(m, mjOBJ_BODY, "Trunk");
+                const int robot_body = mj_name2id(m, mjOBJ_BODY, cmd.robot_body.c_str());
 
                 bool applied = false;
                 {
@@ -70,7 +70,9 @@ namespace k1sim::module {
                                                  ball_body_name,
                                                  "'/'",
                                                  ball_geom_name,
-                                                 "', or no Trunk for a robot-relative command)");
+                                                 "', or no '",
+                                                 cmd.robot_body,
+                                                 "' body for a robot-relative command)");
                 }
             });
 

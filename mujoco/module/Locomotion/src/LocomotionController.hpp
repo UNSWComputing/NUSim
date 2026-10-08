@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <vector>
 #include <yaml-cpp/yaml.h>
 
@@ -44,9 +45,10 @@ namespace k1sim::module {
     public:
         // locomotion_cfg: config/locomotion.yaml root node.
         // gains_cfg: config/gains.yaml root node (kp/kd/ready_pose, JointIndexK1 order).
-        LocomotionController(const YAML::Node& locomotion_cfg, const YAML::Node& gains_cfg);
+        LocomotionController(const YAML::Node& locomotion_cfg, const YAML::Node& gains_cfg, std::string prefix = "");
 
         // -- StepController --
+        void reset() override;
         void step(const mjModel* m, mjData* d) override;
         int mode() const override {
             return mode_.load(std::memory_order_relaxed);
@@ -96,6 +98,8 @@ namespace k1sim::module {
         void update_fall_detection(const mjModel* m, mjData* d);
 
         // -- config (parsed once at construction; no model needed) --
+        std::string prefix_;
+        int initial_mode_ = booster::DAMPING;
         double prepare_blend_time_;
         double falling_tilt_, fallen_tilt_, falling_gyro_, fallen_height_;
 

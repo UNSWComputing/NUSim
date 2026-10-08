@@ -1,4 +1,4 @@
-# Step 1 roster example for --game 3. Not yet consumed by the simulator launcher.
+# Roster for --game 3 --match match_3v3.yaml. Paths are relative to the config directory.
 # List order is model order: original K1, sub01_, ... sub05_.
 schema_version: 1
 teams:

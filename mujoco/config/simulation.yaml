@@ -11,7 +11,7 @@ fields:
 # Matches for --game <n> (n robots a side, 1-11), instead of --field/--robots. Positions are one
 # team's (x, y) in metres, in its own -x half; the other team is the point-mirror (-x, -y),
 # turned to face the other way. The first robot is the main robot -- the one NUbots controls --
-# the rest are PD-held at the ready pose. The dimensions are the field's (HSL M-Field).
+# each robot has an independent controller and sensor stream. The dimensions are the field's (HSL M-Field).
 game:
   field: middle
   length: 14.0

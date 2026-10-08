@@ -36,7 +36,10 @@ namespace k1sim::module {
 
     }  // namespace
 
-    LocomotionController::LocomotionController(const YAML::Node& locomotion_cfg, const YAML::Node& gains_cfg) {
+    LocomotionController::LocomotionController(const YAML::Node& locomotion_cfg,
+                                               const YAML::Node& gains_cfg,
+                                               std::string prefix)
+        : prefix_(std::move(prefix)) {
         prepare_blend_time_ = locomotion_cfg["prepare_blend_time"].as<double>(1.0);
 
         const auto fall_node = locomotion_cfg["fall"];
@@ -55,7 +58,8 @@ namespace k1sim::module {
         // ChangeMode arrives.
         const std::string initial_mode = locomotion_cfg["initial_mode"].as<std::string>("prepare");
         if (initial_mode == "prepare") {
-            request_mode_change(booster::PREPARE);
+            initial_mode_ = booster::PREPARE;
+            request_mode_change(initial_mode_);
         }
         else if (initial_mode != "damping") {
             throw std::runtime_error("config/locomotion.yaml: unknown initial_mode '" + initial_mode
@@ -63,11 +67,28 @@ namespace k1sim::module {
         }
     }
 
+    void LocomotionController::reset() {
+        // The caller holds the physics lock, so only mailbox writers can run concurrently.
+        std::lock_guard<std::mutex> lock(cmd_mutex_);
+        head_pitch_ = head_yaw_ = 0.0;
+        low_cmd_type_           = 1;
+        low_cmd_motors_.clear();
+        requested_mode_ = initial_mode_;
+        ++mode_seq_;
+        state_                  = State::Damping;
+        custom_parallel_warned_ = false;
+        custom_low_cmd_seen_    = false;
+        custom_entry_step_      = false;
+        prepare_start_time_     = 0.0;
+        mode_.store(initial_mode_, std::memory_order_relaxed);
+        fall_state_.store(booster::IS_READY, std::memory_order_relaxed);
+    }
+
     void LocomotionController::ensure_initialized(const mjModel* m) {
         if (initialized_) {
             return;
         }
-        map_         = std::make_unique<ModelMap>(ModelMap::build(m));
+        map_         = std::make_unique<ModelMap>(ModelMap::build(m, prefix_));
         initialized_ = true;
     }
 

@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <nuclear>
+#include <vector>
 
 #include "module/Locomotion/src/LocomotionController.hpp"
 
@@ -21,13 +22,14 @@ namespace k1sim::module {
         explicit Locomotion(std::unique_ptr<NUClear::Environment> environment);
 
     private:
-        void warn_once(bool& flag, const char* rpc);
+        void warn_once(std::atomic<bool>& flag, const char* rpc);
 
-        std::unique_ptr<LocomotionController> controller_;
-        bool walk_warned_    = false;
-        bool getup_warned_   = false;
-        bool liedown_warned_ = false;
-        bool kick_warned_    = false;
+        LocomotionController* controller_for(int robot_id);
+        std::vector<std::shared_ptr<LocomotionController>> controllers_;
+        std::atomic<bool> walk_warned_{false};
+        std::atomic<bool> getup_warned_{false};
+        std::atomic<bool> liedown_warned_{false};
+        std::atomic<bool> kick_warned_{false};
     };
 
 }  // namespace k1sim::module

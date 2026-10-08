@@ -21,17 +21,17 @@ namespace k1sim::module::sdkbridge {
     using eprosima::fastdds::dds::SampleInfo;
     using eprosima::fastrtps::types::ReturnCode_t;
 
-    RpcServer::RpcServer(DdsParticipant& dds, NUClear::Reactor& reactor, int64_t unknown_api_status)
-        : reactor_(reactor), unknown_api_status_(unknown_api_status) {
+    RpcServer::RpcServer(DdsParticipant& dds, NUClear::Reactor& reactor, int64_t unknown_api_status, int robot_id)
+        : dds_(dds), robot_id_(robot_id), reactor_(reactor), unknown_api_status_(unknown_api_status) {
+
+        rpc_resp_writer_ =
+            dds.create_writer<booster_msgs::msg::dds_::RpcRespMsg_PubSubType>(k1sim::booster::TOPIC_RPC_RESPONSE,
+                                                                              DdsParticipant::state_writer_qos());
 
         rpc_req_reader_ =
             dds.create_reader<booster_msgs::msg::dds_::RpcReqMsg_PubSubType>(k1sim::booster::TOPIC_RPC_REQUEST,
                                                                              DdsParticipant::rpc_request_reader_qos(),
                                                                              this);
-
-        rpc_resp_writer_ =
-            dds.create_writer<booster_msgs::msg::dds_::RpcRespMsg_PubSubType>(k1sim::booster::TOPIC_RPC_RESPONSE,
-                                                                              DdsParticipant::state_writer_qos());
 
         // rt/joint_ctrl (LowCmd_) — optional passthrough, only honoured by Locomotion in
         // RobotMode::CUSTOM. Reuse the RPC reader's RELIABLE/KEEP_LAST QoS; this topic
@@ -42,27 +42,37 @@ namespace k1sim::module::sdkbridge {
             this);
     }
 
+    RpcServer::~RpcServer() {
+        // Delete readers while their listener is still alive, before participant teardown.
+        dds_.delete_reader(rpc_req_reader_);
+        dds_.delete_reader(joint_ctrl_reader_);
+    }
+
     void RpcServer::on_data_available(DataReader* reader) {
-        if (reader == rpc_req_reader_) {
-            handle_rpc_request();
+        // A reader can notify during create_reader(), before its member pointer has
+        // been assigned. Route using the callback's reader; all other state is already
+        // initialised and the reply writer is created before either reader.
+        const auto& topic = reader->get_topicdescription()->get_name();
+        if (topic == k1sim::booster::TOPIC_RPC_REQUEST) {
+            handle_rpc_request(reader);
         }
-        else if (reader == joint_ctrl_reader_) {
-            handle_joint_ctrl();
+        else if (topic == k1sim::booster::TOPIC_JOINT_CTRL) {
+            handle_joint_ctrl(reader);
         }
     }
 
-    void RpcServer::handle_rpc_request() {
+    void RpcServer::handle_rpc_request(DataReader* reader) {
         booster_msgs::msg::dds_::RpcReqMsg_ req;
         SampleInfo info;
-        while (rpc_req_reader_->take_next_sample(&req, &info) == ReturnCode_t::RETCODE_OK) {
+        while (reader->take_next_sample(&req, &info) == ReturnCode_t::RETCODE_OK) {
             if (!info.valid_data) {
                 continue;
             }
 
-            const RpcOutcome outcome = dispatch_rpc(req.header(),
-                                                    req.body(),
-                                                    current_mode_.load(std::memory_order_relaxed),
-                                                    unknown_api_status_);
+            RpcOutcome outcome = dispatch_rpc(req.header(),
+                                              req.body(),
+                                              current_mode_.load(std::memory_order_relaxed),
+                                              unknown_api_status_);
 
             if (outcome.unknown_api_id) {
                 reactor_.log<NUClear::LogLevel::WARN>("SdkBridge: RPC unknown/unparseable api_id",
@@ -70,6 +80,13 @@ namespace k1sim::module::sdkbridge {
                                                       "— replying status",
                                                       outcome.status);
             }
+
+            outcome.action.mode_change.robot_id = robot_id_;
+            outcome.action.walk.robot_id        = robot_id_;
+            outcome.action.head.robot_id        = robot_id_;
+            outcome.action.get_up.robot_id      = robot_id_;
+            outcome.action.lie_down.robot_id    = robot_id_;
+            outcome.action.visual_kick.robot_id = robot_id_;
 
             switch (outcome.action.kind) {
                 case RpcActionKind::MODE_CHANGE:
@@ -104,15 +121,16 @@ namespace k1sim::module::sdkbridge {
         }
     }
 
-    void RpcServer::handle_joint_ctrl() {
+    void RpcServer::handle_joint_ctrl(DataReader* reader) {
         booster_interface::msg::dds_::LowCmd_ cmd;
         SampleInfo info;
-        while (joint_ctrl_reader_->take_next_sample(&cmd, &info) == ReturnCode_t::RETCODE_OK) {
+        while (reader->take_next_sample(&cmd, &info) == ReturnCode_t::RETCODE_OK) {
             if (!info.valid_data) {
                 continue;
             }
 
             auto msg      = std::make_unique<k1sim::message::LowCmdMessage>();
+            msg->robot_id = robot_id_;
             msg->cmd_type = static_cast<int>(cmd.cmd_type());
             msg->motors.reserve(cmd.motor_cmd().size());
             for (const auto& m : cmd.motor_cmd()) {

@@ -3,6 +3,7 @@
 #include "shared/k1/BoosterApi.hpp"
 #include "shared/message/Commands.hpp"
 #include "shared/util/Config.hpp"
+#include "shared/util/RobotRoster.hpp"
 
 namespace k1sim::module {
 
@@ -17,32 +18,43 @@ namespace k1sim::module {
 
     Locomotion::Locomotion(std::unique_ptr<NUClear::Environment> environment) : Reactor(std::move(environment)) {
 
+        // Construct before Startup: DDS callbacks and controller attachment may run
+        // concurrently with Startup reactions in other modules.
+        const auto locomotion_cfg = config::load("locomotion.yaml");
+        const auto gains_cfg      = config::load("gains.yaml");
+        for (const auto& robot : config::robot_roster()) {
+            controllers_.push_back(
+                std::make_shared<LocomotionController>(locomotion_cfg, gains_cfg, robot_prefix(robot.model_index)));
+        }
         on<Startup>().then([this] {
-            auto locomotion_cfg = config::load("locomotion.yaml");
-            auto gains_cfg      = config::load("gains.yaml");
-
-            try {
-                controller_ = std::make_unique<LocomotionController>(locomotion_cfg, gains_cfg);
+            for (std::size_t i = 0; i < controllers_.size(); ++i) {
+                auto handle        = std::make_unique<ControllerHandle>();
+                handle->controller = controllers_[i].get();
+                handle->robot_id   = static_cast<int>(i) + 1;
+                handle->owner      = controllers_[i];
+                emit(handle);
             }
-            catch (const std::exception& e) {
-                log<NUClear::LogLevel::FATAL>("Locomotion: failed to build the mode controller:", e.what());
-                throw;
-            }
-
-            emit(std::make_unique<ControllerHandle>(ControllerHandle{controller_.get()}));
-            log<NUClear::LogLevel::INFO>("Locomotion ready (servo-command listener; policies live in NUbots_K1)");
+            log<NUClear::LogLevel::INFO>("Locomotion ready — independent controllers:", controllers_.size());
         });
 
-        on<Trigger<HeadCommand>>().then(
-            [this](const HeadCommand& cmd) { controller_->set_head_command(cmd.pitch, cmd.yaw); });
+        on<Trigger<HeadCommand>>().then([this](const HeadCommand& cmd) {
+            if (auto* controller = controller_for(cmd.robot_id)) {
+                controller->set_head_command(cmd.pitch, cmd.yaw);
+            }
+        });
 
         on<Trigger<ModeChangeRequest>>().then([this](const ModeChangeRequest& req) {
-            log<NUClear::LogLevel::INFO>("ChangeMode requested: mode", req.mode);
-            controller_->request_mode_change(req.mode);
+            if (auto* controller = controller_for(req.robot_id)) {
+                log<NUClear::LogLevel::INFO>("ChangeMode requested: robot", req.robot_id, "mode", req.mode);
+                controller->request_mode_change(req.mode);
+            }
         });
 
-        on<Trigger<LowCmdMessage>>().then(
-            [this](const LowCmdMessage& cmd) { controller_->set_low_cmd(cmd.cmd_type, cmd.motors); });
+        on<Trigger<LowCmdMessage>>().then([this](const LowCmdMessage& cmd) {
+            if (auto* controller = controller_for(cmd.robot_id)) {
+                controller->set_low_cmd(cmd.cmd_type, cmd.motors);
+            }
+        });
 
         // Locomotion policies (walk, get-up, lie-down, kick) moved to the NUbots_K1 side;
         // they arrive as LowCmd servo targets in CUSTOM mode. The old high-level RPCs stay
@@ -56,9 +68,16 @@ namespace k1sim::module {
         on<Shutdown>().then([this] { log<NUClear::LogLevel::INFO>("Locomotion shutting down"); });
     }
 
-    void Locomotion::warn_once(bool& flag, const char* rpc) {
-        if (!flag) {
-            flag = true;
+    LocomotionController* Locomotion::controller_for(int robot_id) {
+        if (robot_id < 1 || robot_id > static_cast<int>(controllers_.size())) {
+            log<NUClear::LogLevel::WARN>("Locomotion: ignoring unknown robot", robot_id);
+            return nullptr;
+        }
+        return controllers_[robot_id - 1].get();
+    }
+
+    void Locomotion::warn_once(std::atomic<bool>& flag, const char* rpc) {
+        if (!flag.exchange(true, std::memory_order_relaxed)) {
             log<NUClear::LogLevel::WARN>(rpc,
                                          "RPC received, but locomotion policies live in NUbots_K1 now; "
                                          "ignored (drive the robot with CUSTOM mode + rt/joint_ctrl)");

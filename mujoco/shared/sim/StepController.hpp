@@ -15,6 +15,9 @@ namespace k1sim {
     public:
         virtual ~StepController() = default;
 
+        // Called under the physics lock. Concrete controllers clear their own mailbox/FSM.
+        virtual void reset() {}
+
         virtual void step(const mjModel* m, mjData* d) = 0;
 
         virtual int mode() const        = 0;  // booster::RobotMode value

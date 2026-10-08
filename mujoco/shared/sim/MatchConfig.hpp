@@ -18,7 +18,7 @@ namespace k1sim {
     };
 
     // A roster follows --game's scene order: team 0's slots, then team 1's slots.
-    // Loading is explicit; this schema is not yet wired into Simulation/SdkBridge.
+    // --match selects this schema for Simulation, Locomotion and SdkBridge.
     struct MatchConfig {
         int schema_version = 1;
         std::array<TeamIdentity, 2> teams{};

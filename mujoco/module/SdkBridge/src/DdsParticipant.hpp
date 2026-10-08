@@ -59,6 +59,13 @@ namespace k1sim::module::sdkbridge {
             return subscriber_->create_datareader(topic, qos, listener);
         }
 
+        void delete_reader(eprosima::fastdds::dds::DataReader* reader) {
+            if (reader) {
+                reader->set_listener(nullptr);
+                subscriber_->delete_datareader(reader);
+            }
+        }
+
         eprosima::fastdds::dds::DomainParticipant* participant() const {
             return participant_;
         }

@@ -1,8 +1,11 @@
 #ifndef K1SIM_MODULE_SDKBRIDGE_HPP
 #define K1SIM_MODULE_SDKBRIDGE_HPP
 
+#include <cstdint>
 #include <memory>
+#include <mutex>
 #include <nuclear>
+#include <vector>
 
 #include "module/SdkBridge/src/BallCommandReader.hpp"
 #include "module/SdkBridge/src/DdsParticipant.hpp"
@@ -21,14 +24,24 @@ namespace k1sim::module {
         explicit SdkBridge(std::unique_ptr<NUClear::Environment> environment);
 
     private:
-        // Constructed in on<Startup> (after config/dds.yaml is read) — see DdsParticipant
-        // for why a live participant can't be created before that.
-        std::unique_ptr<sdkbridge::DdsParticipant> dds_;
-        std::unique_ptr<sdkbridge::StatePublisher> state_publisher_;
-        std::unique_ptr<sdkbridge::RpcServer> rpc_server_;
-        // NUSim-only test surface: ground truth out, ball commands in (PROTOCOL.md §6)
-        std::unique_ptr<sdkbridge::GroundTruthPublisher> ground_truth_;
-        std::unique_ptr<sdkbridge::BallCommandReader> ball_command_reader_;
+        struct RobotConnection {
+            int robot_id;
+            bool seen_state           = false;
+            uint64_t last_reset_count = 0;
+            uint64_t last_step_count  = 0;
+            std::unique_ptr<sdkbridge::DdsParticipant> dds;
+            std::unique_ptr<sdkbridge::StatePublisher> publisher;
+            std::unique_ptr<sdkbridge::RpcServer> rpc;
+            // NUSim-only test surface (PROTOCOL.md §6). Declared last so they are destroyed before the
+            // participant. Ground truth is this robot's own state: another robot's pose never reaches
+            // this domain on rt/nusim/gt/robot.
+            std::unique_ptr<sdkbridge::GroundTruthPublisher> ground_truth;
+            std::unique_ptr<sdkbridge::BallCommandReader> ball_command_reader;
+        };
+        // Serialises Startup, state/battery publication and Shutdown. DDS listener
+        // callbacks do not take this mutex: they enqueue commands and reply directly.
+        std::mutex connections_mutex_;
+        std::vector<RobotConnection> connections_;
     };
 
 }  // namespace k1sim::module

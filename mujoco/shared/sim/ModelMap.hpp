@@ -26,11 +26,11 @@ namespace k1sim {
         // sensordata start addresses (-1 if the sensor is absent)
         int sens_quat = -1, sens_gyro = -1, sens_acc = -1, sens_linvel = -1;
 
-        static ModelMap build(const mjModel* m) {
+        static ModelMap build(const mjModel* m, const std::string& prefix = "") {
             ModelMap map;
             for (std::size_t i = 0; i < JOINT_COUNT; ++i) {
-                const int jnt = mj_name2id(m, mjOBJ_JOINT, JOINT_NAMES[i]);
-                const int act = mj_name2id(m, mjOBJ_ACTUATOR, JOINT_NAMES[i]);
+                const int jnt = mj_name2id(m, mjOBJ_JOINT, (prefix + JOINT_NAMES[i]).c_str());
+                const int act = mj_name2id(m, mjOBJ_ACTUATOR, (prefix + JOINT_NAMES[i]).c_str());
                 if (jnt < 0 || act < 0) {
                     throw std::runtime_error(std::string("model is missing joint/actuator '") + JOINT_NAMES[i] + "'");
                 }
@@ -39,25 +39,18 @@ namespace k1sim {
                 map.act_id[i]   = act;
             }
 
-            for (int j = 0; j < m->njnt; ++j) {
-                if (m->jnt_type[j] == mjJNT_FREE) {
-                    const int body = m->jnt_bodyid[j];
-                    // the robot's root free joint, not the ball's: it owns the imu site's body chain
-                    if (map.root_qpos_adr < 0 || m->body_subtreemass[body] > m->body_subtreemass[map.root_body_id]) {
-                        map.root_qpos_adr = m->jnt_qposadr[j];
-                        map.root_dof_adr  = m->jnt_dofadr[j];
-                        map.root_body_id  = body;
-                    }
-                }
+            const int root = mj_name2id(m, mjOBJ_JOINT, (prefix + "root").c_str());
+            if (root < 0 || m->jnt_type[root] != mjJNT_FREE) {
+                throw std::runtime_error("model is missing free root joint '" + prefix + "root'");
             }
-            if (map.root_qpos_adr < 0) {
-                throw std::runtime_error("model has no free root joint");
-            }
+            map.root_qpos_adr = m->jnt_qposadr[root];
+            map.root_dof_adr  = m->jnt_dofadr[root];
+            map.root_body_id  = m->jnt_bodyid[root];
 
-            map.imu_site_id = mj_name2id(m, mjOBJ_SITE, "imu");
+            map.imu_site_id = mj_name2id(m, mjOBJ_SITE, (prefix + "imu").c_str());
 
-            auto sensor_adr = [m](const char* name) {
-                const int id = mj_name2id(m, mjOBJ_SENSOR, name);
+            auto sensor_adr = [m, &prefix](const char* name) {
+                const int id = mj_name2id(m, mjOBJ_SENSOR, (prefix + name).c_str());
                 return id < 0 ? -1 : m->sensor_adr[id];
             };
             map.sens_quat   = sensor_adr("orientation");

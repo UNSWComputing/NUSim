@@ -24,20 +24,23 @@ namespace k1sim::module::sdkbridge {
 
     class RpcServer : public eprosima::fastdds::dds::DataReaderListener {
     public:
-        RpcServer(DdsParticipant& dds, NUClear::Reactor& reactor, int64_t unknown_api_status);
+        RpcServer(DdsParticipant& dds, NUClear::Reactor& reactor, int64_t unknown_api_status, int robot_id = 1);
+        ~RpcServer() override;
 
         void on_data_available(eprosima::fastdds::dds::DataReader* reader) override;
 
-        // SdkBridge's on<Trigger<SimStateUpdate>> handler calls this every tick so
+        // SdkBridge's RobotStatesUpdate handler calls this every tick so
         // GET_MODE can answer from an atomic without touching the physics thread.
         void set_current_mode(int mode) {
             current_mode_.store(mode, std::memory_order_relaxed);
         }
 
     private:
-        void handle_rpc_request();
-        void handle_joint_ctrl();
+        void handle_rpc_request(eprosima::fastdds::dds::DataReader* reader);
+        void handle_joint_ctrl(eprosima::fastdds::dds::DataReader* reader);
 
+        DdsParticipant& dds_;
+        int robot_id_;
         NUClear::Reactor& reactor_;
         int64_t unknown_api_status_;
         std::atomic<int> current_mode_{0};

@@ -103,7 +103,9 @@ namespace k1sim::module::sdkbridge::test_support {
             update->getting_up   = false;
             update->measured_rtf = 1.0;
 
-            emit(update);
+            auto batch = std::make_unique<k1sim::message::RobotStatesUpdate>();
+            batch->robots.push_back(*update);
+            emit(batch);
         });
     }
 

@@ -13,10 +13,11 @@ namespace k1sim {
         std::string field;                // override for simulation.yaml field (a name under its `fields`)
         int game                = 0;      // robots a side for a match (0 = none); sets the field and robots
         bool on_field_positions = false;  // --game robots in kickoff positions, not on the touchlines
+        std::string match_config;         // roster YAML, relative to config_dir unless absolute
         std::string config_dir;           // override for the config directory
         std::string keyframe;             // override for the startup keyframe (default "ready")
         double rtf = -1.0;                // override real-time factor; <0 = use config (0 = free-run)
-        int robots = 1;                   // total K1s on the field; extras are PD-held at "ready"
+        int robots = 1;                   // total K1s on the field; each robot has independent control
     };
 
     inline constexpr int MAX_ROBOTS    = 20;
@@ -56,6 +57,9 @@ namespace k1sim {
             else if (arg == "--on-field-positions") {
                 opts.on_field_positions = true;
             }
+            else if (arg == "--match") {
+                opts.match_config = value("--match");
+            }
             else if (arg == "--config-dir") {
                 opts.config_dir = value("--config-dir");
             }
@@ -83,15 +87,15 @@ namespace k1sim {
                     "                        no-field  bare flat floor, no field or ball\n"
                     "  --game <n>          a match of n robots a side, 1-11, on the middle field\n"
                     "                      (not with --field/--robots), lined up on the\n"
-                    "                      touchlines; only the main robot (team 1's first) is\n"
-                    "                      controlled, the rest are PD-held at the ready pose\n"
+                    "                      touchlines, each with independent control and sensors\n"
                     "  --on-field-positions  with --game, start in kickoff positions instead:\n"
                     "                      attacker, goalkeeper, two wings, then spread through the half\n"
+                    "  --match <file>      with --game, robot identities and DDS domains from a roster\n"
                     "  --config-dir <dir>  config directory (default: mujoco/config)\n"
                     "  --keyframe <name>   startup keyframe (default: ready; e.g. lying_front)\n"
                     "  --rtf <factor>      real-time factor; 0 = free-run\n"
                     "  --robots <n>        total K1s on the field, 1-20 (default 1); extra robots\n"
-                    "                      are uncontrolled and PD-held at the ready pose\n");
+                    "                      each with independent control and sensors\n");
                 std::exit(0);
             }
             else {
@@ -101,6 +105,10 @@ namespace k1sim {
         }
         if (opts.game > 0 && (!opts.field.empty() || robots_given)) {
             std::fprintf(stderr, "--game sets the field and robots itself; drop --field/--robots\n");
+            std::exit(1);
+        }
+        if (!opts.match_config.empty() && opts.game == 0) {
+            std::fprintf(stderr, "--match needs --game\n");
             std::exit(1);
         }
         if (opts.on_field_positions && opts.game == 0) {

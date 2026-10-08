@@ -6,8 +6,10 @@
 #include <cstdint>
 #include <mujoco/mujoco.h>
 #include <mutex>
+#include <vector>
 
 #include "shared/k1/JointIndex.hpp"
+#include "shared/sim/RobotIdentity.hpp"
 
 // NUClear messages exchanged between the sim's own modules (in-process only —
 // nothing here goes over DDS; the SdkBridge translates to the Booster wire types).
@@ -65,6 +67,14 @@ namespace k1sim::message {
         int fall_state      = 0;  // booster::FallState value
         bool getting_up     = false;
         double measured_rtf = 0.0;
+        RobotIdentity identity{1, 0, 125, 1, 0};
+        uint64_t reset_count = 0;  // per-robot resets, including full-world resets
+    };
+
+    // Captured under one physics lock. Used by SdkBridge so NUClear's per-type
+    // cache cannot substitute another robot's latest state for an earlier one.
+    struct RobotStatesUpdate {
+        std::vector<SimStateUpdate> robots;
     };
 
     // Emitted once by module::Simulation after the model is loaded. The mutex guards

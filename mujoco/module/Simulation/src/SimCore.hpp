@@ -28,17 +28,20 @@ namespace k1sim {
     //
     // Threading contract: mjData (d()) is only ever touched with mutex() held. The physics
     // thread holds it for control+step+snapshot only; callers (e.g. the viewer) should acquire
-    // it briefly. set_controller()/controller() are lock-free (std::atomic<StepController*>)
-    // so a controller can be installed after start() without racing the physics thread.
+    // it briefly. Controller installation and reset also take that lock. Robot contexts
+    // exist before Startup and remain stable for the lifetime of the loaded model.
     class SimCore {
     public:
         using StateCallback = std::function<void(std::unique_ptr<message::SimStateUpdate>)>;
+
+        using BatchCallback = std::function<void(std::unique_ptr<message::RobotStatesUpdate>)>;
 
         struct Config {
             std::string model_path;                  // resolved via k1sim::config::resolve_path by the caller
             std::string initial_keyframe = "ready";  // keyframe to spawn (and reset) into
             double rtf                   = 1.0;      // real-time factor; 0 = free-run (no pacing sleep)
-            int robots                   = 1;        // total K1s; extras are attached copies PD-held at "ready"
+            int robots                   = 1;        // total independently controlled K1s
+            std::vector<RobotIdentity> identities;   // empty = generated IDs in model order
             // Per-robot spawn (x, y, yaw), main robot first, from a --game; robots must equal its
             // size. Empty = the main robot spawns at its keyframe and extras on a default grid.
             std::vector<std::array<double, 3>> spawns;
@@ -76,7 +79,7 @@ namespace k1sim {
                                                                     // "ready" keyframe
         };
 
-        explicit SimCore(Config config, StateCallback on_state = {});
+        explicit SimCore(Config config, StateCallback on_state = {}, BatchCallback on_batch = {});
         ~SimCore();
 
         SimCore(const SimCore&)            = delete;
@@ -95,8 +98,8 @@ namespace k1sim {
         mjData* data() const noexcept {
             return d_;
         }
-        const ModelMap& model_map() const noexcept {
-            return map_;
+        const ModelMap& model_map(int robot_id = 1) const {
+            return context(robot_id).map;
         }
         std::mutex& mutex() noexcept {
             return mutex_;
@@ -105,20 +108,22 @@ namespace k1sim {
             return measured_rtf_;
         }
 
-        // Thread-safe; may be called before or after start(), any number of times.
-        void set_controller(StepController* controller) noexcept {
-            controller_.store(controller, std::memory_order_release);
-        }
-        StepController* controller() const noexcept {
-            return controller_.load(std::memory_order_acquire);
-        }
+        // Legacy main-robot attachment; caller owns this controller until stop().
+        void set_controller(StepController* controller);
+        StepController* controller() const;
+        // Shared ownership keeps per-robot controllers alive through physics shutdown.
+        void set_robot_controller(int robot_id, std::shared_ptr<StepController> controller);
 
-        // Resets mjData back to the state load_model() established (the "ready" keyframe, or
-        // zeros if the model has none) — robot pose, ball, velocities, controls. Thread-safe
-        // (takes the sim mutex); callable while the physics thread runs. Does NOT reset the
-        // attached StepController: it keeps its mode and last commands, mirroring a real robot
-        // being picked up and placed back on its start point mid-program.
+        // Full-world reset clears every controller, restores startup poses and resets time.
         void reset();
+        // Restore only this robot's startup qpos/velocity/control and controller mailbox.
+        // Leaves other robot state, the ball, world time and step counter untouched.
+        void reset_robot(int robot_id);
+
+        // Deterministic stepping/capture for tools and integration tests. step_once() is
+        // only allowed while stopped; capture_states() is safe while running.
+        void step_once();
+        message::RobotStatesUpdate capture_states();
 
         // Spawns the physics thread. Requires load_model() to have already succeeded. Idempotent:
         // calling start() again while already running is a no-op.
@@ -154,25 +159,35 @@ namespace k1sim {
         void place_ball_on_centre_mark();
         // Spawn (x, y, z, yaw) of robot k (0 = main): Config::spawns, else the default grid.
         std::array<double, 4> spawn_pose(int k) const;
-        // Requires the caller to hold mutex_. Reads d_/map_/controller state into a fresh message.
-        std::unique_ptr<message::SimStateUpdate> make_snapshot(uint64_t steps) const;
+        struct RobotContext {
+            RobotIdentity identity;
+            ModelMap map;
+            PdController pd;
+            std::array<double, JOINT_COUNT> ready_target{};
+            std::array<double, 7> startup_root{};
+            std::array<double, JOINT_COUNT> startup_joints{};
+            int head_body_id = -1;
+            std::shared_ptr<StepController> owner;
+            StepController* controller = nullptr;
+            uint64_t reset_count       = 0;
+        };
+        RobotContext& context(int robot_id);
+        const RobotContext& context(int robot_id) const;
+        void advance_locked();
+        message::RobotStatesUpdate capture_locked() const;
+        std::unique_ptr<message::SimStateUpdate> make_snapshot(const RobotContext& robot, uint64_t steps) const;
 
         Config config_;
         StateCallback on_state_;
+        BatchCallback on_batch_;
 
         mjModel* m_    = nullptr;
         mjData* d_     = nullptr;
         int reset_key_ = -1;  // keyframe id load_model() reset to; reused by reset()
-        ModelMap map_{};
-        std::array<double, JOINT_COUNT> ready_target_{};
-        PdController pd_{};
-        // Joint/actuator index maps for the extra --robots copies (root/sensor fields unused);
-        // the physics loop PD-holds each of them at ready_target_ every step.
-        std::vector<ModelMap> extra_maps_;
+        std::vector<RobotContext> robot_contexts_;
 
-        std::mutex mutex_;
+        mutable std::mutex mutex_;
         std::atomic<double> measured_rtf_{0.0};
-        std::atomic<StepController*> controller_{nullptr};
 
         std::atomic<bool> running_{false};
         std::thread thread_;
@@ -184,11 +199,8 @@ namespace k1sim {
         int left_foot_body_id_  = -1;
         int right_foot_body_id_ = -1;
 
-        // Head_2, for SimStateUpdate::head (published as rt/head_pose); -1 if absent.
-        int head_body_id_ = -1;
-
         // The scene ball (body + sphere geom named "ball"), for SimStateUpdate::ball (NUSim ground
-        // truth); -1 if the scene has none.
+        // truth); -1 if the scene has none. Shared by every robot's snapshot.
         int ball_body_id_ = -1;
         int ball_geom_id_ = -1;
     };

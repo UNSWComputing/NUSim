@@ -4,15 +4,19 @@ Six independent players share one NUSim physics world. Each player receives its 
 IMU data, plus a coherent snapshot of the ball and all robot poses. Adapters will use that snapshot
 to supply the player's normal localisation messages for teamwork tests with perfect information.
 
-This first step defines the roster and generates the DDS snapshot type. It does not yet enable
-independent controllers, load the roster at simulator startup or publish snapshots. Existing
-single-robot commands and Booster wire layouts retain their current behaviour.
+The simulator loads the roster and supports independent controllers and sensor streams.
+The full-world DDS snapshot type is generated but is not yet published; the player localisation
+adapters remain a later milestone. Existing single-robot Booster topic names and wire layouts
+are preserved.
 
 ## Robot identities and match configuration
 
 `mujoco/config/match_3v3.yaml` is the initial roster for `--game 3`. Team numbers 125 and 126 are
 local example values; configure them to match the player processes and GameController.
 `shared/sim/MatchConfig.hpp` loads and validates this schema independently of NUClear.
+Select it with `--game 3 --match match_3v3.yaml`; the path is relative to the config directory
+unless absolute. Without `--match`, IDs follow scene order, team IDs default to 125 and 126,
+and domains increase from `dds.yaml`'s `domain`.
 
 | Robot ID | Model index | Trunk body | Team ID | Player ID | DDS domain |
 | --- | --- | --- | --- | --- | --- |
@@ -37,8 +41,8 @@ roles explicitly.
 
 ## Transport and command routing
 
-Each robot will have one dedicated DDS domain containing its unchanged Booster state, low-level
-commands and RPC topics. The simulator will join every configured domain. A player process joins
+Each robot has one dedicated DDS domain containing its unchanged Booster state, low-level
+commands and RPC topics. The simulator joins every configured domain. A player process joins
 only its own domain, configured before any module initialises its DDS factory. Domain 0 preserves
 the first robot's existing default. Domains 0..63 are a local configuration convention, with no
 repeats within a match; concurrent matches must also use disjoint domain sets.
@@ -52,8 +56,9 @@ The intended snapshot QoS is best effort, volatile, keep-last with depth one. Ea
 all robots, so a dropped packet cannot create a mixture of separately received robot and ball
 states. Players consume the latest complete sample and use local monotonic receipt time to detect
 staleness. A full world reset changes the generation described below. Ordinary Booster messages
-have no generation field: resetting their command mailboxes and controllers will require a
-separate lifecycle mechanism when independent control is implemented.
+have no generation field. Simulator resets clear the selected controller's mailbox, mode and
+fall state; resetting remote policy state and rejecting commands still in transport require a
+player lifecycle mechanism in the adapter milestone.
 
 Routing selects the robot from the receiving domain, then uses its internal robot ID. No robot ID
 is added to Booster messages. Team communication runs separately from these domains; it must
@@ -88,9 +93,15 @@ must not be used for control intervals or receipt freshness. Pausing or stopping
 input stale even if the last sample's simulation time remains unchanged.
 
 Supervisor placements and ball relocations are state changes in the current generation. A full
-reset is distinct: it restarts simulation time and clears all player/controller state. The existing
-reset currently retains controller targets; the later control milestone must change that behaviour
-for independent players.
+reset restarts simulation time and clears all simulator controllers. Player processes will need
+a lifecycle notification to clear their policy state when the ground-truth bridge is connected.
+
+`SimCore::reset_robot(robot_id)` and the internal NUClear `RobotResetRequest` restore only that
+robot's startup pose, zero its velocities and controls, and clear its controller mailbox and fall
+state. Other robots, the ball, world time and the step counter are preserved. Controllers return
+to `locomotion.yaml`'s initial mode. Backspace or `SimResetRequest` resets the whole world.
+These resets do not add a Booster RPC or DDS reset topic. Shared physical contacts can still
+affect neighbouring robots on subsequent physics steps.
 
 ## Coordinate frames and measurements
 
@@ -158,7 +169,10 @@ processing are required for this initial mode.
 
 ## Implementation sequence
 
-The next milestone will connect this roster to simulator startup, check its size against the
-selected scene, and create independent controllers and sensor streams. Snapshot capture and DDS
-publication then provide the input for the native player bridge. Coordinate conversion, freshness,
+The roster is checked against the selected match size at startup. Robot contexts hold independent
+maps, controllers and sensor identities; all controllers run before one shared physics step.
+`RobotStatesUpdate` captures every robot together, and each DDS domain publishes only its own
+Booster state. The main robot still supplies the viewer heartbeat and camera images.
+
+The next milestone adds full-world snapshot capture and DDS publication for the native player bridge. Coordinate conversion, freshness,
 reset handling and team communication need integration checks before six player processes can run.
