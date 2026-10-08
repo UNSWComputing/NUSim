@@ -24,7 +24,7 @@ namespace k1sim::message {
     };
 
     struct ImuData {
-        std::array<double, 4> quat{1, 0, 0, 0};  // w,x,y,z world->imu
+        std::array<double, 4> quat{1, 0, 0, 0};  // w,x,y,z imu->world
         std::array<double, 3> rpy{};             // roll, pitch, yaw (rad)
         std::array<double, 3> gyro{};            // rad/s, body frame
         std::array<double, 3> acc{};             // m/s^2, body frame, includes gravity
@@ -75,6 +75,12 @@ namespace k1sim::message {
     // cache cannot substitute another robot's latest state for an earlier one.
     struct RobotStatesUpdate {
         std::vector<SimStateUpdate> robots;
+        bool ball_valid = false;
+        std::array<double, 3> ball_centre{}, ball_velocity{}, ball_angular_velocity{};
+        uint64_t reset_generation     = 0;
+        uint64_t sample_sequence      = 0;
+        uint64_t capture_time_unix_ns = 0;
+        std::array<char, 36> session_id{};
     };
 
     // Emitted once by module::Simulation after the model is loaded. The mutex guards

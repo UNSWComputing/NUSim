@@ -230,3 +230,8 @@ MuJoCo remains the default for this interactive simulator.
 
 Forked from [NUWebots](https://github.com/NUbots/NUWebots); the Webots/NUgus simulation has been removed in
 favour of the MuJoCo path (see git history if you need it).
+
+### Native motion-policy players
+
+See [Native motion-policy players](docs/NATIVE_MOTION_PLAYER.md) for the companion CPU
+player build and behavioural checks using independent robot domains and simulated localisation.

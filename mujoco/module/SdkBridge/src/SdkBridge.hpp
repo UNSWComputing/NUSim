@@ -12,6 +12,7 @@
 #include "module/SdkBridge/src/GroundTruthPublisher.hpp"
 #include "module/SdkBridge/src/RpcServer.hpp"
 #include "module/SdkBridge/src/StatePublisher.hpp"
+#include "shared/sim/MatchConfig.hpp"
 
 namespace k1sim::module {
 
@@ -26,9 +27,10 @@ namespace k1sim::module {
     private:
         struct RobotConnection {
             int robot_id;
-            bool seen_state           = false;
-            uint64_t last_reset_count = 0;
-            uint64_t last_step_count  = 0;
+            eprosima::fastdds::dds::DataWriter* truth_writer = nullptr;
+            bool seen_state                                  = false;
+            uint64_t last_reset_count                        = 0;
+            uint64_t last_step_count                         = 0;
             std::unique_ptr<sdkbridge::DdsParticipant> dds;
             std::unique_ptr<sdkbridge::StatePublisher> publisher;
             std::unique_ptr<sdkbridge::RpcServer> rpc;
@@ -40,6 +42,7 @@ namespace k1sim::module {
         };
         // Serialises Startup, state/battery publication and Shutdown. DDS listener
         // callbacks do not take this mutex: they enqueue commands and reply directly.
+        std::array<TeamIdentity, 2> teams_{{{125, true}, {126, false}}};
         std::mutex connections_mutex_;
         std::vector<RobotConnection> connections_;
     };

@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cmath>
 #include <ctime>
+#include <random>
 #include <stdexcept>
 
 #include "shared/k1/BoosterApi.hpp"
@@ -212,6 +213,15 @@ namespace k1sim {
     }
 
     void SimCore::load_model() {
+        std::random_device random;
+        const char* hex = "0123456789abcdef";
+        for (std::size_t i = 0; i < session_id_.size(); ++i)
+            session_id_[i] = hex[random() & 15];
+        for (auto i : {8, 13, 18, 23})
+            session_id_[i] = '-';
+        session_id_[14] = '4';
+        session_id_[19] = hex[8 + (random() & 3)];
+
         std::lock_guard<std::mutex> lock(mutex_);
         const std::string resolved = config::resolve_path(config_.model_path).string();
 
@@ -519,6 +529,7 @@ namespace k1sim {
         if (!d_) {
             throw std::logic_error("reset requires a loaded model");
         }
+        ++reset_generation_;
         if (reset_key_ >= 0) {
             mj_resetDataKeyframe(m_, d_, reset_key_);
         }
@@ -544,6 +555,7 @@ namespace k1sim {
         if (!d_) {
             throw std::logic_error("reset requires a loaded model");
         }
+        ++reset_generation_;
         std::copy(robot.startup_root.begin(), robot.startup_root.end(), d_->qpos + robot.map.root_qpos_adr);
         for (int i = 0; i < 6; ++i) {
             d_->qvel[robot.map.root_dof_adr + i]           = 0.0;
@@ -598,6 +610,24 @@ namespace k1sim {
 
     message::RobotStatesUpdate SimCore::capture_locked() const {
         message::RobotStatesUpdate result;
+        result.session_id       = session_id_;
+        result.reset_generation = reset_generation_;
+        result.sample_sequence  = ++sample_sequence_;
+        result.capture_time_unix_ns =
+            std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch())
+                .count();
+        const int ball = mj_name2id(m_, mjOBJ_GEOM, "ball");
+        if (ball >= 0) {
+            result.ball_valid = true;
+            for (int i = 0; i < 3; ++i)
+                result.ball_centre[i] = d_->geom_xpos[3 * ball + i];
+            mjtNum velocity[6];
+            mj_objectVelocity(m_, d_, mjOBJ_GEOM, ball, velocity, 0);
+            for (int i = 0; i < 3; ++i) {
+                result.ball_angular_velocity[i] = velocity[i];
+                result.ball_velocity[i]         = velocity[3 + i];
+            }
+        }
         for (const auto& robot : robot_contexts_) {
             result.robots.push_back(*make_snapshot(robot, step_count()));
         }

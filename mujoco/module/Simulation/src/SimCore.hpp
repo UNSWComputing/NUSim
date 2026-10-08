@@ -186,6 +186,9 @@ namespace k1sim {
         int reset_key_ = -1;  // keyframe id load_model() reset to; reused by reset()
         std::vector<RobotContext> robot_contexts_;
 
+        uint64_t reset_generation_        = 0;
+        mutable uint64_t sample_sequence_ = 0;
+        std::array<char, 36> session_id_{};
         mutable std::mutex mutex_;
         std::atomic<double> measured_rtf_{0.0};
 

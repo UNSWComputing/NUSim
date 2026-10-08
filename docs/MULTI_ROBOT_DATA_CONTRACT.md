@@ -1,12 +1,12 @@
 # Multi robot identities and ground truth contract
 
 Six independent players share one NUSim physics world. Each player receives its own joint and
-IMU data, plus a coherent snapshot of the ball and all robot poses. Adapters will use that snapshot
+IMU data, plus a coherent snapshot of the ball and all robot poses. Adapters use that snapshot
 to supply the player's normal localisation messages for teamwork tests with perfect information.
 
 The simulator loads the roster and supports independent controllers and sensor streams.
-The full-world DDS snapshot type is generated but is not yet published; the player localisation
-adapters remain a later milestone. Existing single-robot Booster topic names and wire layouts
+The full-world DDS snapshot is published in every robot domain. A minimal native player adapter
+in the companion repository supplies the pose and localisation inputs used by the motion policies. Existing single-robot Booster topic names and wire layouts
 are preserved.
 
 ## Robot identities and match configuration
@@ -47,7 +47,7 @@ only its own domain, configured before any module initialises its DDS factory. D
 the first robot's existing default. Domains 0..63 are a local configuration convention, with no
 repeats within a match; concurrent matches must also use disjoint domain sets.
 
-The simulator will publish an identical full-world snapshot in every robot domain on
+The simulator publishes an identical full-world snapshot in every robot domain on
 `rt/nusim/gt/world_v1`, registered as `nusim_msgs::msg::dds_::WorldSnapshot_`. The IDL source is
 `mujoco/idl/nusim_msgs/msg/WorldSnapshot.idl`; CMake generates its Fast-DDS support alongside the
 existing types. Constants live in `shared/sim/GroundTruthContract.hpp`.
@@ -174,5 +174,12 @@ maps, controllers and sensor identities; all controllers run before one shared p
 `RobotStatesUpdate` captures every robot together, and each DDS domain publishes only its own
 Booster state. The main robot still supplies the viewer heartbeat and camera images.
 
-The next milestone adds full-world snapshot capture and DDS publication for the native player bridge. Coordinate conversion, freshness,
-reset handling and team communication need integration checks before six player processes can run.
+Full-world capture and DDS publication now support the native player bridge, including the ball
+geom centre and its velocity. Session UUID, reset generation, monotonically increasing sample
+sequence and capture timestamps accompany every snapshot. Per-robot and full-world resets advance
+the generation; only full-world reset rewinds physics time. Team directions currently come from
+startup configuration; GameController half-change updates remain future work.
+
+See [Native motion-policy player](NATIVE_MOTION_PLAYER.md) for the companion build, behavioural
+checks and the adapter's current scope. Complete sensor kinematics and team communication remain
+necessary before enabling full competition behaviours.
