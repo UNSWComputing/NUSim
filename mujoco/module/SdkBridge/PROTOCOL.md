@@ -362,6 +362,14 @@ to widen, not narrow), `module::SdkBridge` uses:
   or env `K1_DDS_UDP_ONLY=1`, which strips SHM from the participant's
   `transport_descriptors` (workaround for docker `--ipc host` not always being
   available, e.g. rootless docker or restricted CI).
+- For a simulator and native players on the same host, `config/dds.yaml: local_only: true`
+  selects UDPv4 on `127.0.0.1` with non-blocking sends. Both ends must select it.
+  This takes precedence over `udp_only`; its default is false, preserving network
+  and SHM deployments. Native clients use the third `DdsParticipant` constructor
+  argument. A full socket buffer drops a datagram instead of blocking publication;
+  reliable commands/RPCs retain their delivery policy, and state consumers retain
+  their freshness admission and watchdogs. `test_dds_transport` exercises this
+  mode as well as both existing transport modes.
 
 Empirically verified in the M4/M5 contract test (`test/contract/test_sdk_roundtrip.py`
 + its C++ helper client, built against **both** the older local SDK checkout at

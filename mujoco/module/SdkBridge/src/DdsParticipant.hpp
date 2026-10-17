@@ -27,7 +27,9 @@ namespace k1sim::module::sdkbridge {
         // udp_only strips the SHM transport (config/dds.yaml: udp_only, or env
         // K1_DDS_UDP_ONLY=1), leaving UDPv4 only — a workaround for docker boundaries
         // where /dev/shm isn't shared (e.g. no --ipc host).
-        DdsParticipant(int domain_id, bool udp_only);
+        // local_only selects non-blocking UDP on loopback for native players on
+        // the same host. It leaves the normal network transport unchanged.
+        DdsParticipant(int domain_id, bool udp_only, bool local_only = false);
         ~DdsParticipant();
 
         DdsParticipant(const DdsParticipant&)            = delete;

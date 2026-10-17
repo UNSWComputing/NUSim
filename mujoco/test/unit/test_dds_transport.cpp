@@ -21,10 +21,13 @@ int main() {
     settings.intraprocess_delivery = eprosima::fastrtps::INTRAPROCESS_OFF;
     eprosima::fastrtps::xmlparser::XMLProfileManager::library_settings(settings);
 
-    for (bool udp_only : {true, false}) {
+    for (int mode = 0; mode < 3; ++mode) {
+        const bool udp_only   = mode != 1;
+        const bool local_only = mode == 2;
+        const char* name      = local_only ? "loopback UDP" : (udp_only ? "UDP" : "UDP+SHM");
         // Keep test traffic away from the simulator's domain 0 and real robots.
-        DdsParticipant publisher(udp_only ? 81 : 82, udp_only);
-        DdsParticipant subscriber(udp_only ? 81 : 82, udp_only);
+        DdsParticipant publisher(81 + mode, udp_only, local_only);
+        DdsParticipant subscriber(81 + mode, udp_only, local_only);
         auto writer_qos = DdsParticipant::state_writer_qos();
         writer_qos.data_sharing().off();
         auto reader_qos = DdsParticipant::rpc_request_reader_qos();
@@ -53,10 +56,10 @@ int main() {
             }
         }
         if (!received) {
-            std::fprintf(stderr, "DDS message delivery timed out (%s)\n", udp_only ? "UDP" : "UDP+SHM");
+            std::fprintf(stderr, "DDS message delivery timed out (%s)\n", name);
             return 1;
         }
-        std::printf("DDS message delivered (%s)\n", udp_only ? "UDP" : "UDP+SHM");
+        std::printf("DDS message delivered (%s)\n", name);
     }
     return 0;
 }

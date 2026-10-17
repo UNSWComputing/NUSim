@@ -2,5 +2,6 @@
 domain: 0 # first robot domain; subsequent robots use domain + model_index unless --match supplies a roster
 # Each player process must initialise DDS with its own domain (NUbots HardwareIO defaults to 0).
 udp_only: false # true disables SHM transport (docker boundary fallback; or env K1_DDS_UDP_ONLY=1)
+local_only: false # opt-in non-blocking UDP on 127.0.0.1 for simulator and players on the same host
 battery_soc: 100.0 # constant SOC reported on rt/battery_state
 unknown_api_status: 0 # RPC status returned for unimplemented api_ids (0 = accept + warn)

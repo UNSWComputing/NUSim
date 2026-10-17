@@ -25,6 +25,7 @@ namespace k1sim::module {
             auto cfg = config::load("dds.yaml");
 
             const bool udp_only              = cfg["udp_only"].as<bool>(false) || env_flag_set("K1_DDS_UDP_ONLY");
+            const bool local_only            = cfg["local_only"].as<bool>(false);
             const double battery_soc         = cfg["battery_soc"].as<double>(100.0);
             const int64_t unknown_api_status = cfg["unknown_api_status"].as<int64_t>(0);
 
@@ -34,8 +35,8 @@ namespace k1sim::module {
             if (!cli().match_config.empty()) {
                 const auto path = std::filesystem::path(cli().match_config);
                 teams_          = load_match_config(
-                             YAML::LoadFile((path.is_absolute() ? path : config::config_dir() / path).string()))
-                             .teams;
+                                      YAML::LoadFile((path.is_absolute() ? path : config::config_dir() / path).string()))
+                                      .teams;
             }
             for (const auto& robot : config::robot_roster()) {
                 // Each robot gets its own odometry estimator (own bias, pose and noise stream); a fixed
@@ -47,7 +48,7 @@ namespace k1sim::module {
 
                 RobotConnection connection;
                 connection.robot_id = robot.robot_id;
-                connection.dds      = std::make_unique<sdkbridge::DdsParticipant>(robot.dds_domain, udp_only);
+                connection.dds = std::make_unique<sdkbridge::DdsParticipant>(robot.dds_domain, udp_only, local_only);
                 connection.truth_writer =
                     connection.dds->create_writer<nusim_msgs::msg::dds_::WorldSnapshot_PubSubType>(
                         ground_truth::TOPIC_WORLD_SNAPSHOT,
@@ -64,7 +65,7 @@ namespace k1sim::module {
                                              robot.robot_id,
                                              "DDS domain",
                                              robot.dds_domain,
-                                             udp_only ? "UDP-only" : "UDP+SHM",
+                                             local_only ? "loopback UDP" : (udp_only ? "UDP-only" : "UDP+SHM"),
                                              ", odometry",
                                              odometry.enabled ? "with the config/odometry.yaml error model"
                                                               : "ground truth");
