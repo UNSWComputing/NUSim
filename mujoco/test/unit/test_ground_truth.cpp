@@ -26,7 +26,10 @@ int main() {
     require(first.session_id[14] == '4', "session is not UUID v4");
     const int geom = mj_name2id(sim.model(), mjOBJ_GEOM, "ball");
     const int body = sim.model()->geom_bodyid[geom];
-    require(std::abs(first.ball_centre[0] - sim.data()->xpos[3 * body]) > 1, "ball geom offset lost");
+    // The ball body is re-originated on its sphere (freebody::reorigin_body_at_geom), so its origin is the
+    // sphere centre. The snapshot must still report the geom centre, whichever way the model is built.
+    for (int i = 0; i < 3; ++i)
+        require(std::abs(first.ball_centre[i] - sim.data()->xpos[3 * body + i]) < 1e-9, "ball body not on its sphere");
     for (int i = 0; i < 3; ++i)
         require(std::abs(first.ball_centre[i] - sim.data()->geom_xpos[3 * geom + i]) < 1e-12, "ball centre wrong");
     const int joint = sim.model()->body_jntadr[body], q = sim.model()->jnt_qposadr[joint],

@@ -13,11 +13,14 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "LowCmd.h"
 #include "LowCmdPubSubTypes.h"
 #include "LowState.h"
 #include "LowStatePubSubTypes.h"
+#include "Odometry.h"
+#include "OdometryPubSubTypes.h"
 #include "Pose.h"
 #include "PosePubSubTypes.h"
 #include "RpcReqMsg.h"
@@ -29,6 +32,7 @@
 #include "module/Simulation/src/Simulation.hpp"
 #include "shared/k1/BoosterApi.hpp"
 #include "shared/k1/JointIndex.hpp"
+#include "shared/k1/NUSimApi.hpp"
 #include "shared/util/Config.hpp"
 
 namespace {
@@ -88,10 +92,15 @@ namespace {
         DataReader* response;
         DataReader* sensors;
         DataReader* head;
+        DataReader* gt_robot;
+        DataReader* gt_ball;
         LowState_ latest;
         Pose_ latest_head;
         bool seen      = false;
         bool head_seen = false;
+        // rt/nusim/gt/robot samples seen in this domain, and the ball ones
+        std::vector<std::array<double, 2>> gt_robot_xy;
+        std::size_t gt_ball_count = 0;
         explicit Client(int domain) : dds(domain, true) {
             request =
                 dds.create_writer<booster_msgs::msg::dds_::RpcReqMsg_PubSubType>(k1sim::booster::TOPIC_RPC_REQUEST,
@@ -111,7 +120,16 @@ namespace {
                 dds.create_reader<geometry_msgs::msg::dds_::Pose_PubSubType>(k1sim::booster::TOPIC_HEAD_POSE,
                                                                              DdsParticipant::rpc_request_reader_qos(),
                                                                              nullptr);
-            require(request && command && response && sensors && head, "DDS client endpoints failed");
+            gt_robot = dds.create_reader<nav_msgs::msg::dds_::Odometry_PubSubType>(
+                k1sim::nusim::TOPIC_GT_ROBOT,
+                DdsParticipant::rpc_request_reader_qos(),
+                nullptr);
+            gt_ball = dds.create_reader<nav_msgs::msg::dds_::Odometry_PubSubType>(
+                k1sim::nusim::TOPIC_GT_BALL,
+                DdsParticipant::rpc_request_reader_qos(),
+                nullptr);
+            require(request && command && response && sensors && head && gt_robot && gt_ball,
+                    "DDS client endpoints failed");
         }
         bool discovered() {
             PublicationMatchedStatus rpc_status, cmd_status;
@@ -126,6 +144,17 @@ namespace {
                 if (info.valid_data) {
                     latest = state;
                     seen   = true;
+                }
+            }
+            nav_msgs::msg::dds_::Odometry_ odom;
+            while (gt_robot->take_next_sample(&odom, &info) == ReturnCode_t::RETCODE_OK) {
+                if (info.valid_data) {
+                    gt_robot_xy.push_back({odom.pose().pose().position().x(), odom.pose().pose().position().y()});
+                }
+            }
+            while (gt_ball->take_next_sample(&odom, &info) == ReturnCode_t::RETCODE_OK) {
+                if (info.valid_data) {
+                    ++gt_ball_count;
                 }
             }
             Pose_ pose;
@@ -242,6 +271,23 @@ int main() {
                        && second.latest.motor_state_serial()[k1sim::HeadYaw].q() > 0.25;
             },
             "joint commands or sensor streams crossed robot domains");
+        // Each domain's rt/nusim/gt/robot is that domain's own robot only. The robots spawn about 3 m
+        // apart (robot 1 at the origin, robot 2 at x = -3), so any sample of the other robot's pose
+        // leaking into a domain lands on the wrong side of x = -1.5.
+        wait_for(
+            [&] {
+                first.read_sensors();
+                second.read_sensors();
+                return first.gt_robot_xy.size() > 10 && second.gt_robot_xy.size() > 10 && first.gt_ball_count > 0
+                       && second.gt_ball_count > 0;
+            },
+            "ground truth did not reach both robot domains (robot and shared ball)");
+        for (const auto& xy : first.gt_robot_xy) {
+            require(xy[0] > -1.5, "robot 2's ground truth leaked into robot 1's domain");
+        }
+        for (const auto& xy : second.gt_robot_xy) {
+            require(xy[0] < -1.5, "robot 1's ground truth leaked into robot 2's domain");
+        }
         std::puts("production two-robot DDS head/joint/mode/RPC isolation passed");
     }
     catch (const std::exception& error) {
