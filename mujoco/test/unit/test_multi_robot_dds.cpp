@@ -67,7 +67,7 @@ namespace {
             require(created != nullptr, "temporary config directory failed");
             path                = created;
             const auto original = k1sim::config::config_dir();
-            for (const auto* name : {"simulation.yaml", "locomotion.yaml", "gains.yaml"}) {
+            for (const auto* name : {"simulation.yaml", "locomotion.yaml", "gains.yaml", "odometry.yaml"}) {
                 std::filesystem::copy_file(original / name, path / name);
             }
             // Isolate test traffic from production domains 0..5 and the DDS transport test.
