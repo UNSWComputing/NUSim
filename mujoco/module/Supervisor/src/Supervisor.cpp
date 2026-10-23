@@ -1,9 +1,12 @@
 #include "module/Supervisor/src/Supervisor.hpp"
 
+#include <string>
 #include <vector>
 
 #include "module/Supervisor/src/GameControllerPacket.hpp"
 #include "module/Supervisor/src/SupervisorConfig.hpp"
+#include "module/Supervisor/src/SupervisorPlacement.hpp"
+#include "shared/message/Commands.hpp"
 #include "shared/message/SimMessages.hpp"
 #include "shared/util/Config.hpp"
 
@@ -32,6 +35,8 @@ namespace k1sim::module {
         SupervisorConfig cfg = build_config();
         const bool enabled   = cfg.enabled;
         const int gc_port    = cfg.gc_port;
+        const std::string ball_body_name = cfg.ball.body;
+        const std::string ball_geom_name = cfg.ball.geom;
         logic_               = std::make_unique<SupervisorLogic>(std::move(cfg));
 
         on<Trigger<message::SimHandles>>().then([this](const message::SimHandles& handles) {
@@ -39,6 +44,35 @@ namespace k1sim::module {
             data_.store(handles.data, std::memory_order_release);
             sim_mutex_.store(handles.mutex, std::memory_order_release);
         });
+
+        // NUSim test control (rt/nusim/ball_command via SdkBridge): place/roll the ball on demand.
+        // Independent of the GameController, so it is installed whether or not placement is enabled.
+        on<Trigger<message::BallCommand>>().then(
+            [this, ball_body_name, ball_geom_name](const message::BallCommand& cmd) {
+                const mjModel* m      = model_.load(std::memory_order_acquire);
+                mjData* d             = data_.load(std::memory_order_acquire);
+                std::mutex* sim_mutex = sim_mutex_.load(std::memory_order_acquire);
+                if (m == nullptr || d == nullptr || sim_mutex == nullptr) {
+                    log<NUClear::LogLevel::WARN>("Ball command received before the sim model was ready, ignoring");
+                    return;
+                }
+                const int ball_body  = mj_name2id(m, mjOBJ_BODY, ball_body_name.c_str());
+                const int ball_geom  = mj_name2id(m, mjOBJ_GEOM, ball_geom_name.c_str());
+                const int robot_body = mj_name2id(m, mjOBJ_BODY, "Trunk");
+
+                bool applied = false;
+                {
+                    std::lock_guard<std::mutex> lock(*sim_mutex);
+                    applied = supervisor::apply_ball_command(m, d, ball_body, ball_geom, robot_body, cmd);
+                }
+                if (!applied) {
+                    log<NUClear::LogLevel::WARN>("Ball command could not be applied (no free ball body/geom '",
+                                                 ball_body_name,
+                                                 "'/'",
+                                                 ball_geom_name,
+                                                 "', or no Trunk for a robot-relative command)");
+                }
+            });
 
         if (!enabled) {
             on<Startup>().then(

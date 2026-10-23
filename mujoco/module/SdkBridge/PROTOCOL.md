@@ -413,3 +413,39 @@ generates anything, since 3.x releases move their own defaults. Both rationales 
 changed flag or a swapped generator no longer shows up as a reviewable diff of
 `*PubSubTypes.cxx`, it shows up as a robot that silently stops decoding our samples.
 Re-read this section and §2 before touching the invocation.
+
+## 6. NUSim-only topics: ground truth and ball commands
+
+These are **not** part of the Booster SDK surface. A real robot never publishes or listens on
+them. They exist so NUbots-side tools can validate estimators against the simulator and drive
+repeatable ball scenarios without a GameController. All three use `nav_msgs::msg::dds_::Odometry_`,
+which both NUSim and NUbots_K1 already generate, so neither side needs new IDL. Topic names are
+in `shared/k1/NUSimApi.hpp`. QoS: the writers use `state_writer_qos()` and the command reader
+uses `rpc_request_reader_qos(5)` (§4).
+
+| Topic | Direction | Rate |
+|---|---|---|
+| `rt/nusim/gt/ball` | sim → client | 50 Hz (every `SimStateUpdate`), only while the scene has a free `ball` body with a `ball` geom |
+| `rt/nusim/gt/robot` | sim → client | 50 Hz |
+| `rt/nusim/ball_command` | client → sim | on demand |
+
+**Ground truth (`gt/ball`, `gt/robot`)**
+- `header.stamp` is the **wall clock** (system clock, UTC epoch) when the physics snapshot was taken, so a client on the same host can time-align it with its own estimates.
+- `header.frame_id` and `child_frame_id` are both `"world"`. Unlike `rt/odom`, the twist here is in the **world** frame. The world is the MuJoCo world, which is the field frame of the scene.
+- `gt/ball`:
+  - `pose.position` is the sphere's centre.
+  - `twist.linear` is the centre velocity.
+  - `twist.angular` is the spin, in world axes.
+  - The orientation is always identity: a uniform ball's orientation carries no information.
+- `gt/robot`: the Trunk's pose, linear velocity and angular velocity (world axes). This is the same state `rt/odometer_state` and `rt/odom` are derived from.
+
+**Ball command (`ball_command`)**
+- `header.frame_id` selects the frame of `pose.position`, `twist.linear` and `twist.angular`:
+  - `"world"`
+  - `"robot"`: the yaw-only frame at the main robot's `Trunk`, projected to the ground; x forward, z up.
+  - Anything else is logged and ignored.
+- `pose.position` is where to put the ball's centre. `z < 0` rests it on the floor at its radius. The orientation is ignored.
+- `twist.linear` is the centre velocity to set.
+- `twist.angular` is the spin to set, unless `child_frame_id == "rolling"`. In that case the spin for rolling without slipping is derived from the velocity, so the ball does not skid (and shed speed) on its first contact.
+- `module::Supervisor` applies the command under the sim mutex between physics steps, whether or not GameController placement is enabled.
+

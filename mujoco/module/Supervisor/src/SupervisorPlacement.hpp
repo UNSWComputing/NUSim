@@ -5,6 +5,9 @@
 #include <cmath>
 #include <mujoco/mujoco.h>
 
+#include "shared/message/Commands.hpp"
+#include "shared/sim/FreeBody.hpp"
+
 // Pure MuJoCo qpos/qvel writers for teleporting free-jointed bodies (the ball,
 // or a robot's root) — the physics-placement primitive the sim-side
 // GameController supervisor uses to mirror Webots' Supervisor role (ball to
@@ -86,6 +89,58 @@ namespace k1sim::module::supervisor {
         const double oy = m->geom_pos[3 * geom_id + 1];
         const double oz = m->geom_pos[3 * geom_id + 2];
         return place_free_body(m, d, body_id, x - ox, y - oy, z - oz, 0.0);
+    }
+
+
+    // Applies a NUSim ball command (rt/nusim/ball_command, see shared/k1/NUSimApi.hpp): places the
+    // ball geom's centre and sets its velocity and spin. For Frame::ROBOT the position, velocity and
+    // spin are expressed in the yaw-only frame at robot_body's ground projection (x forward, z up),
+    // so a test can roll the ball at the robot wherever it stands. position.z < 0 rests the ball on
+    // the floor at its radius. rolling derives the spin for rolling without slipping from the
+    // (world) velocity and ignores angular_velocity, so the ball does not skid and lose speed on
+    // its first contact. Returns false (no write) for an invalid ball, or a missing/non-free robot
+    // body when the command is robot-relative. Caller holds the sim mutex.
+    inline bool apply_ball_command(const mjModel* m,
+                                   mjData* d,
+                                   int ball_body_id,
+                                   int ball_geom_id,
+                                   int robot_body_id,
+                                   const k1sim::message::BallCommand& cmd) {
+        if (!k1sim::freebody::valid_free_body_geom(m, ball_body_id, ball_geom_id)) {
+            return false;
+        }
+
+        // Robot-relative commands: rotate by the robot's yaw and offset by its ground projection
+        double ox = 0.0, oy = 0.0, c = 1.0, s = 0.0;
+        if (cmd.frame == k1sim::message::BallCommand::Frame::ROBOT) {
+            if (robot_body_id < 0 || robot_body_id >= m->nbody || m->body_jntnum[robot_body_id] != 1
+                || m->jnt_type[m->body_jntadr[robot_body_id]] != mjJNT_FREE) {
+                return false;
+            }
+            const mjtNum* q = d->qpos + m->jnt_qposadr[m->body_jntadr[robot_body_id]];
+            ox              = q[0];
+            oy              = q[1];
+            // yaw of the wxyz quaternion q[3..6]
+            const double yaw = std::atan2(2.0 * (q[3] * q[6] + q[4] * q[5]), 1.0 - 2.0 * (q[5] * q[5] + q[6] * q[6]));
+            c                = std::cos(yaw);
+            s                = std::sin(yaw);
+        }
+        const auto rotate = [c, s](const std::array<double, 3>& v) -> std::array<double, 3> {
+            return {c * v[0] - s * v[1], s * v[0] + c * v[1], v[2]};
+        };
+
+        const double radius = m->geom_size[3 * ball_geom_id];
+        const auto p        = rotate(cmd.position);
+        const double x      = ox + p[0];
+        const double y      = oy + p[1];
+        const double z      = cmd.position[2] < 0.0 ? radius : cmd.position[2];
+        if (!place_free_body_by_geom_center(m, d, ball_body_id, ball_geom_id, x, y, z)) {
+            return false;
+        }
+
+        const auto v = rotate(cmd.velocity);
+        const auto w = cmd.rolling ? k1sim::freebody::rolling_spin(v, radius) : rotate(cmd.angular_velocity);
+        return k1sim::freebody::set_geom_centre_velocity(m, d, ball_body_id, ball_geom_id, v, w);
     }
 
 }  // namespace k1sim::module::supervisor

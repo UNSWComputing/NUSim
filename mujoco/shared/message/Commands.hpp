@@ -1,6 +1,7 @@
 #ifndef K1SIM_SHARED_MESSAGE_COMMANDS_HPP
 #define K1SIM_SHARED_MESSAGE_COMMANDS_HPP
 
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -45,6 +46,17 @@ namespace k1sim::message {
     struct LowCmdMessage {  // rt/joint_ctrl, only honoured in RobotMode::CUSTOM
         int cmd_type = 1;   // 0 = PARALLEL (logged + ignored), 1 = SERIAL
         std::vector<MotorCmdData> motors;
+    };
+
+    // rt/nusim/ball_command (NUSim test control, see shared/k1/NUSimApi.hpp): place the scene ball
+    // and set its velocity. Consumed by module::Supervisor, which applies it under the sim mutex.
+    struct BallCommand {
+        enum class Frame { WORLD, ROBOT };
+        Frame frame = Frame::WORLD;
+        std::array<double, 3> position{};          // ball centre; z < 0 rests it on the floor
+        std::array<double, 3> velocity{};          // centre velocity (m/s)
+        std::array<double, 3> angular_velocity{};  // spin (rad/s), ignored when rolling
+        bool rolling = false;                      // derive spin for rolling without slipping
     };
 
     // Emitted once by module::Locomotion at startup; consumed by module::Simulation,

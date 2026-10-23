@@ -43,14 +43,24 @@ namespace k1sim::message {
         std::array<double, 4> quat{1, 0, 0, 0};  // w,x,y,z
     };
 
+    // The scene ball (body "ball", sphere geom "ball"), for NUSim ground truth (rt/nusim/gt/ball).
+    struct BallState {
+        bool valid = false;                  // false if the scene has no ball
+        std::array<double, 3> position{};    // geom centre, world frame (m)
+        std::array<double, 3> lin_vel{};     // geom centre velocity, world frame (m/s)
+        std::array<double, 3> ang_vel{};     // world frame (rad/s)
+    };
+
     // Emitted by the physics thread at the LowState cadence (every N steps, 50 Hz).
     struct SimStateUpdate {
         double sim_time     = 0.0;
+        int64_t wall_time_ns = 0;  // system clock (ns since epoch) when the snapshot was taken
         uint64_t step_count = 0;
         std::array<JointState, JOINT_COUNT> joints{};  // JointIndexK1 order
         ImuData imu{};
         BaseState base{};
         HeadPose head{};
+        BallState ball{};
         int mode            = 0;  // booster::RobotMode value
         int fall_state      = 0;  // booster::FallState value
         bool getting_up     = false;

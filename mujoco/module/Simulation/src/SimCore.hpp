@@ -186,6 +186,11 @@ namespace k1sim {
 
         // Head_2, for SimStateUpdate::head (published as rt/head_pose); -1 if absent.
         int head_body_id_ = -1;
+
+        // The scene ball (body + sphere geom named "ball"), for SimStateUpdate::ball (NUSim ground
+        // truth); -1 if the scene has none.
+        int ball_body_id_ = -1;
+        int ball_geom_id_ = -1;
     };
 
 }  // namespace k1sim

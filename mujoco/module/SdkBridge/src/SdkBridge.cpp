@@ -31,6 +31,8 @@ namespace k1sim::module {
             dds_             = std::make_unique<sdkbridge::DdsParticipant>(domain, udp_only);
             state_publisher_ = std::make_unique<sdkbridge::StatePublisher>(*dds_, battery_soc, odometry);
             rpc_server_      = std::make_unique<sdkbridge::RpcServer>(*dds_, *this, unknown_api_status);
+            ground_truth_        = std::make_unique<sdkbridge::GroundTruthPublisher>(*dds_);
+            ball_command_reader_ = std::make_unique<sdkbridge::BallCommandReader>(*dds_, *this);
 
             log<NUClear::LogLevel::INFO>(
                 "SdkBridge ready (DDS domain",
@@ -49,6 +51,9 @@ namespace k1sim::module {
             }
             rpc_server_->set_current_mode(update.mode);
             state_publisher_->publish(update);
+            if (ground_truth_) {
+                ground_truth_->publish(update);
+            }
         });
 
         on<Every<1, std::chrono::seconds>>().then([this] {
@@ -60,6 +65,8 @@ namespace k1sim::module {
         on<Shutdown>().then([this] {
             log<NUClear::LogLevel::INFO>("SdkBridge shutting down");
             // Destroy in reverse-dependency order: readers/writers before the participant.
+            ball_command_reader_.reset();
+            ground_truth_.reset();
             rpc_server_.reset();
             state_publisher_.reset();
             dds_.reset();
