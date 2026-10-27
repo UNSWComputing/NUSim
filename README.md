@@ -1,7 +1,7 @@
 # NUSim
 
 A self-contained **MuJoCo** simulator for the **Booster Robotics K1** humanoid, used by
-[NUbots](https://nubots.net) for RoboCup development. It replaces **both** Booster's gated Webots build
+[NUbots](https://nubook.nubots.net) for RoboCup development. It replaces **both** Booster's gated Webots build
 **and** their closed-source `mck` motion runner with one inspectable, NUClear-based simulator that speaks
 the **Booster SDK over FastDDS** — the same wire protocol as the real robot — so `NUbots_K1` binaries drive
 it **unchanged**.
