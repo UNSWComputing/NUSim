@@ -122,6 +122,9 @@ namespace k1sim {
         void placed_robot_locked(int robot_id);
         void relocate_ball(double x, double y);
         void topple_robot(int robot_id);
+        // Respawn this robot upright in the ready pose at its current x/y and heading, with
+        // zero velocity, and put its controller in PREPARE. Stands in for the GET_UP RPC.
+        void stand_up_in_place(int robot_id);
         double physics_step_ms() const {
             return physics_steps_ ? double(physics_ns_) / physics_steps_ / 1e6 : 0.;
         }

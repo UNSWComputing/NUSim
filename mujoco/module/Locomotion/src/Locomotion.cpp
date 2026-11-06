@@ -8,8 +8,7 @@
 namespace k1sim::module {
 
     using message::ControllerHandle;
-    using message::GetUpRequest;
-    using message::HeadCommand;
+        using message::HeadCommand;
     using message::LieDownRequest;
     using message::LowCmdMessage;
     using message::ModeChangeRequest;
@@ -56,11 +55,10 @@ namespace k1sim::module {
             }
         });
 
-        // Locomotion policies (walk, get-up, lie-down, kick) moved to the NUbots_K1 side;
-        // they arrive as LowCmd servo targets in CUSTOM mode. The old high-level RPCs stay
-        // on the wire for SDK compatibility but are ignored with a warning.
+        // Locomotion policies (walk, lie-down, kick) moved to the NUbots_K1 side;
+        // they arrive as LowCmd servo targets in CUSTOM mode. GetUp is handled by Simulation
+        // (respawn upright in place). The other high-level RPCs stay on the wire for SDK compatibility but are ignored with a warning.
         on<Trigger<WalkCommand>>().then([this](const WalkCommand&) { warn_once(walk_warned_, "Move"); });
-        on<Trigger<GetUpRequest>>().then([this](const GetUpRequest&) { warn_once(getup_warned_, "GetUp"); });
         on<Trigger<LieDownRequest>>().then([this](const LieDownRequest&) { warn_once(liedown_warned_, "LieDown"); });
         on<Trigger<VisualKickRequest>>().then(
             [this](const VisualKickRequest&) { warn_once(kick_warned_, "VisualKick"); });

@@ -63,7 +63,7 @@ namespace k1sim::module {
 
         // -- thread-safe setters (called from NUClear reaction threads) --
         void set_head_command(double pitch, double yaw);
-        void request_mode_change(int mode);
+        void request_mode_change(int mode) override;
         void set_low_cmd(int cmd_type, std::vector<message::MotorCmdData> motors);
 
         double command_latency_ms() const {

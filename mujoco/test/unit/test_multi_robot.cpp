@@ -197,6 +197,22 @@ int main() {
         sim.step_once();
         require(sim.capture_states().robots[5].fall_state == booster::HAS_FALLEN,
                 "scenario fall did not reach selected robot sensor");
+        {
+            const auto before = sim.capture_states();
+            const int q       = sim.model_map(6).root_qpos_adr;
+            const double x0 = sim.data()->qpos[q], y0 = sim.data()->qpos[q + 1];
+            sim.stand_up_in_place(6);
+            require(std::abs(sim.data()->qpos[q] - x0) < 1e-9 && std::abs(sim.data()->qpos[q + 1] - y0) < 1e-9,
+                    "stand-up moved the robot");
+            require(sim.data()->qpos[q + 2] > 0.5, "stand-up did not lift the robot");
+            for (int i = 0; i < 20; ++i)
+                sim.step_once();
+            require(sim.capture_states().robots[5].fall_state == booster::IS_READY, "robot still fallen after stand-up");
+            for (std::size_t i = 0; i < before.robots.size(); ++i)
+                if (i != 5)
+                    require(before.robots[i].mode == sim.capture_states().robots[i].mode,
+                            "stand-up changed another controller");
+        }
         sim.reset();
         const auto reset = sim.capture_states();
         require(sim.data()->time == 0.0 && sim.step_count() == 0, "full reset did not reset physics time");

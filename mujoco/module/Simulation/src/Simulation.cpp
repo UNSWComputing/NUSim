@@ -160,6 +160,18 @@ namespace k1sim::module {
             log<NUClear::LogLevel::INFO>("Simulation: state reset to startup keyframe");
         });
 
+        // GET_UP / GET_UP_WITH_MODE: the real recovery policy lives in NUbots_K1, so the sim
+        // just respawns the robot upright where it lies.
+        on<Trigger<message::GetUpRequest>>().then([this](const message::GetUpRequest& req) {
+            try {
+                sim_->stand_up_in_place(req.robot_id);
+                log<NUClear::LogLevel::INFO>("Simulation: GetUp -> robot", req.robot_id, "respawned upright in place");
+            }
+            catch (const std::exception& error) {
+                log<NUClear::LogLevel::WARN>("Simulation: GetUp rejected:", error.what());
+            }
+        });
+
         on<Trigger<message::RobotResetRequest>>().then([this](const message::RobotResetRequest& req) {
             try {
                 sim_->reset_robot(req.robot_id);

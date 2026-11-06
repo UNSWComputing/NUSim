@@ -18,6 +18,9 @@ namespace k1sim {
         // Called under the physics lock. Concrete controllers clear their own mailbox/FSM.
         virtual void reset() {}
 
+        // Thread-safe mode request (booster::RobotMode); default ignores it.
+        virtual void request_mode_change(int /*mode*/) {}
+
         virtual void step(const mjModel* m, mjData* d) = 0;
 
         virtual int mode() const        = 0;  // booster::RobotMode value

@@ -624,6 +624,61 @@ namespace k1sim {
         mj_forward(m_, d_);
     }
 
+    void SimCore::stand_up_in_place(int robot_id) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto& robot = context(robot_id);
+        if (!d_) {
+            throw std::logic_error("stand_up_in_place requires a loaded model");
+        }
+        ++reset_generation_;
+        double* root = d_->qpos + robot.map.root_qpos_adr;
+        const double w = root[3], x = root[4], y = root[5], z = root[6];
+
+        // Heading = world-frame horizontal direction the robot faces. Use body +x when it is
+        // roughly horizontal; when lying (x vertical) fall back to the body +z (head) axis,
+        // which points forward if face-down and backward if face-up.
+        double hx = 1 - 2 * (y * y + z * z), hy = 2 * (x * y + w * z), hz = 2 * (x * z - w * y);
+        if (std::hypot(hx, hy) < 0.5) {
+            const double sign = hz < 0 ? 1.0 : -1.0;  // x down (face-down) => +z axis is forward
+            hx                = sign * 2 * (x * z + w * y);
+            hy                = sign * 2 * (y * z - w * x);
+        }
+        const double yaw = std::atan2(hy, hx);
+
+        root[2] = STAND_Z;
+        root[3] = std::cos(yaw / 2.0);
+        root[4] = 0.0;
+        root[5] = 0.0;
+        root[6] = std::sin(yaw / 2.0);
+        for (int i = 0; i < 6; ++i) {
+            d_->qvel[robot.map.root_dof_adr + i]           = 0.0;
+            d_->qfrc_applied[robot.map.root_dof_adr + i]   = 0.0;
+            d_->qacc_warmstart[robot.map.root_dof_adr + i] = 0.0;
+        }
+        for (std::size_t i = 0; i < JOINT_COUNT; ++i) {
+            d_->qpos[robot.map.qpos_adr[i]]          = robot.ready_target[i];
+            d_->qvel[robot.map.dof_adr[i]]           = 0.0;
+            d_->qfrc_applied[robot.map.dof_adr[i]]   = 0.0;
+            d_->qacc_warmstart[robot.map.dof_adr[i]] = 0.0;
+            d_->ctrl[robot.map.act_id[i]]            = 0.0;
+        }
+        for (int body = 1; body < m_->nbody; ++body) {
+            int ancestor = body;
+            while (ancestor != 0 && ancestor != robot.map.root_body_id) {
+                ancestor = m_->body_parentid[ancestor];
+            }
+            if (ancestor == robot.map.root_body_id) {
+                std::fill_n(d_->xfrc_applied + 6 * body, 6, 0.0);
+            }
+        }
+        placed_robot_locked(robot_id);
+        if (robot.controller) {
+            // reset() restores initial_mode, which may be damping; a stood-up robot must hold.
+            robot.controller->request_mode_change(booster::PREPARE);
+        }
+        mj_forward(m_, d_);
+    }
+
     void SimCore::advance_locked() {
         for (auto& robot : robot_contexts_) {
             if (robot.controller) {

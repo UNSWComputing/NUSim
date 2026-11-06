@@ -13,7 +13,7 @@ namespace k1sim::module {
     // consumes HeadCommand/ModeChangeRequest/LowCmdMessage and forwards each into
     // LocomotionController's thread-safe setters. Locomotion *policies* live in
     // NUbots_K1 and reach the sim as LowCmd servo targets; the old high-level RPCs
-    // (Move/GetUp/LieDown/VisualKick) are accepted on the wire but ignored with a
+    // (Move/LieDown/VisualKick) are accepted on the wire but ignored with a
     // warning. The FSM logic itself lives in LocomotionController (deliberately
     // NUClear-free, see that header); this reactor only wires it to NUClear and
     // logs incoming requests.
@@ -27,7 +27,6 @@ namespace k1sim::module {
         LocomotionController* controller_for(int robot_id);
         std::vector<std::shared_ptr<LocomotionController>> controllers_;
         std::atomic<bool> walk_warned_{false};
-        std::atomic<bool> getup_warned_{false};
         std::atomic<bool> liedown_warned_{false};
         std::atomic<bool> kick_warned_{false};
     };
