@@ -17,6 +17,13 @@ namespace k1sim {
         std::string keyframe;             // override for the startup keyframe (default "ready")
         double rtf = -1.0;                // override real-time factor; <0 = use config (0 = free-run)
         int robots = 1;                   // total K1s on the field; extras are PD-held at "ready"
+        bool web   = false;               // serve the browser viewer (module::WebViewer)
+        std::string web_host = "127.0.0.1";  // address the browser viewer listens on
+        int web_port         = 8080;         // port the browser viewer listens on
+        std::string record;               // file to record the match to (empty = no recording)
+        std::string walk_policy;          // directory of a walk policy (scene.json + policy.bin) for the built-in walk
+        bool referee        = false;      // run the built-in GameController (module::Referee), operated from the browser viewer
+        bool gamecontroller = false;      // listen to the RoboCup GameController (module::Supervisor), whatever supervisor.yaml says
     };
 
     inline constexpr int MAX_ROBOTS    = 20;
@@ -73,6 +80,31 @@ namespace k1sim {
                     std::exit(1);
                 }
             }
+            else if (arg == "--web") {
+                opts.web = true;
+            }
+            else if (arg == "--web-host") {
+                opts.web_host = value("--web-host");
+            }
+            else if (arg == "--web-port") {
+                opts.web_port = std::stoi(value("--web-port"));
+                if (opts.web_port < 1 || opts.web_port > 65535) {
+                    std::fprintf(stderr, "--web-port must be between 1 and 65535\n");
+                    std::exit(1);
+                }
+            }
+            else if (arg == "--walk-policy") {
+                opts.walk_policy = value("--walk-policy");
+            }
+            else if (arg == "--referee") {
+                opts.referee = true;
+            }
+            else if (arg == "--gamecontroller" || arg == "--gc") {
+                opts.gamecontroller = true;
+            }
+            else if (arg == "--record") {
+                opts.record = value("--record");
+            }
             else if (arg == "--help" || arg == "-h") {
                 std::printf(
                     "k1_mujoco_sim — MuJoCo simulator for the Booster K1 (Booster SDK DDS surface)\n"
@@ -91,7 +123,17 @@ namespace k1sim {
                     "  --keyframe <name>   startup keyframe (default: ready; e.g. lying_front)\n"
                     "  --rtf <factor>      real-time factor; 0 = free-run\n"
                     "  --robots <n>        total K1s on the field, 1-20 (default 1); extra robots\n"
-                    "                      are uncontrolled and PD-held at the ready pose\n");
+                    "                      are uncontrolled and PD-held at the ready pose\n"
+                    "  --web               serve the browser 3D viewer (works with --headless)\n"
+                    "  --web-host <addr>   address the browser viewer listens on (default 127.0.0.1)\n"
+                    "  --web-port <port>   port the browser viewer listens on (default 8080)\n"
+                    "  --record <file>     record the match to a file, replayable in the browser viewer\n"
+                    "  --walk-policy <dir> built-in walk: WALKING / SOCCER mode obey Move, and the browser viewer\n"
+                    "                      drives the robot with W A S D Q E (a booster_mjlab policy export)\n"
+                    "  --referee           run the GameController inside the sim, operated from the browser\n"
+                    "                      viewer's referee panel (see config/referee.yaml; implies --web)\n"
+                    "  --gamecontroller    obey the RoboCup GameController: ball and robot placement, penalties\n"
+                    "                      (same as supervisor.yaml enabled: true; --gc for short)\n");
                 std::exit(0);
             }
             else {
@@ -103,6 +145,11 @@ namespace k1sim {
             std::fprintf(stderr, "--game sets the field and robots itself; drop --field/--robots\n");
             std::exit(1);
         }
+        if (opts.referee && opts.gamecontroller) {
+            std::fprintf(stderr, "--referee is the GameController itself; drop --gamecontroller\n");
+            std::exit(1);
+        }
+        opts.web = opts.web || opts.referee;
         if (opts.on_field_positions && opts.game == 0) {
             std::fprintf(stderr, "--on-field-positions needs --game\n");
             std::exit(1);

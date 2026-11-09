@@ -5,8 +5,12 @@
 #include <memory>
 #include <mujoco/mujoco.h>
 #include <mutex>
+#include <map>
 #include <nuclear>
+#include <string>
+#include <thread>
 
+#include "module/Supervisor/src/GameControllerPacket.hpp"
 #include "module/Supervisor/src/SupervisorLogic.hpp"
 
 namespace k1sim::module {
@@ -40,6 +44,16 @@ namespace k1sim::module {
         std::atomic<const mjModel*> model_{nullptr};
         std::atomic<mjData*> data_{nullptr};
         std::atomic<std::mutex*> sim_mutex_{nullptr};
+
+        // GameController listener. Its own socket rather than NUClear's on<UDP>, so the port can be shared
+        // (SO_REUSEADDR + SO_REUSEPORT) with robot software on the same host that listens to the same broadcast.
+        void listen(int fd);
+        void handle_packet(const supervisor::gc::GameControllerPacket& packet);
+
+        int socket_fd_ = -1;
+        std::atomic<bool> listening_{false};
+        std::thread listener_;
+        std::map<int, std::string> team_names_;  // GameController team number -> name
     };
 
 }  // namespace k1sim::module

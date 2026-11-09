@@ -3,9 +3,12 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <stdexcept>
 
 #include "module/Locomotion/src/LocoMath.hpp"
+#include "shared/CliOptions.hpp"
+#include "shared/util/Config.hpp"
 
 namespace k1sim::module {
 
@@ -49,6 +52,21 @@ namespace k1sim::module {
         pd_.kp      = load_array(gains_cfg["kp"]);
         pd_.kd      = load_array(gains_cfg["kd"]);
 
+        // Optional built-in walk: --walk-policy, then $K1SIM_WALK_POLICY, then locomotion.yaml walk_policy.
+        std::string policy_dir = cli().walk_policy;
+        if (policy_dir.empty()) {
+            const char* env = std::getenv("K1SIM_WALK_POLICY");
+            policy_dir      = env != nullptr ? env : locomotion_cfg["walk_policy"].as<std::string>("");
+        }
+        if (!policy_dir.empty()) {
+            try {
+                walk_policy_ = WalkPolicy::load(config::resolve_path(policy_dir));
+            }
+            catch (const std::exception& e) {
+                walk_policy_error_ = e.what();
+            }
+        }
+
         // The real robot boots into DAMPING (limp until an operator sends Prepare), but a
         // sim robot spawns standing at the ready pose -- idling in DAMPING just collapses
         // it before any client connects. Default to holding PREPARE until the first
@@ -84,6 +102,8 @@ namespace k1sim::module {
         CommandSnapshot snap;
         snap.head_pitch     = head_pitch_;
         snap.head_yaw       = head_yaw_;
+        snap.head_commanded = head_commanded_;
+        snap.walk           = walk_;
         snap.mode_seq       = mode_seq_;
         snap.requested_mode = requested_mode_;
         snap.low_cmd_type   = low_cmd_type_;
@@ -93,14 +113,25 @@ namespace k1sim::module {
 
     void LocomotionController::set_head_command(double pitch, double yaw) {
         std::lock_guard<std::mutex> lock(cmd_mutex_);
-        head_pitch_ = pitch;
-        head_yaw_   = yaw;
+        head_pitch_     = pitch;
+        head_yaw_       = yaw;
+        head_commanded_ = true;
+    }
+
+    void LocomotionController::set_walk_command(double vx, double vy, double vyaw) {
+        std::lock_guard<std::mutex> lock(cmd_mutex_);
+        walk_ = {vx, vy, vyaw};
     }
 
     void LocomotionController::request_mode_change(int mode) {
         std::lock_guard<std::mutex> lock(cmd_mutex_);
         requested_mode_ = mode;
         ++mode_seq_;
+        // Leaving the walking modes forgets the commanded velocity, so the robot stands when it next enters one.
+        // Entering one keeps it: a Move sent together with the ChangeMode may be handled first.
+        if (mode != booster::WALKING && mode != booster::SOCCER) {
+            walk_ = {};
+        }
     }
 
     void LocomotionController::set_low_cmd(int cmd_type, std::vector<message::MotorCmdData> motors) {
@@ -124,6 +155,7 @@ namespace k1sim::module {
             case State::Damping: step_damping(d); break;
             case State::Prepare: step_prepare(m, d, snap); break;
             case State::Custom: step_custom(m, d, snap); break;
+            case State::Walk: step_walk(m, d, snap); break;
         }
     }
 
@@ -135,6 +167,9 @@ namespace k1sim::module {
             case booster::CUSTOM: break;
             case booster::WALKING:
             case booster::SOCCER:
+                if (walk_policy_) {
+                    break;  // the built-in walk policy takes it from here
+                }
                 // Wire-compatible, but the walking policy lives on the NUbots_K1 side now
                 // (rt/joint_ctrl in CUSTOM mode). Hold the ready pose instead.
                 std::fprintf(stderr,
@@ -151,6 +186,15 @@ namespace k1sim::module {
         mode_.store(effective, std::memory_order_relaxed);
         switch (effective) {
             case booster::DAMPING: state_ = State::Damping; break;
+            case booster::WALKING:
+            case booster::SOCCER:
+                if (state_ != State::Walk) {
+                    state_          = State::Walk;
+                    walk_action_    = {};
+                    walk_target_    = current_q(d);
+                    walk_next_eval_ = d->time;
+                }
+                break;
             case booster::PREPARE:
                 state_              = State::Prepare;
                 prepare_start_pose_ = current_q(d);
@@ -237,6 +281,65 @@ namespace k1sim::module {
         }
         // Joints beyond `n` (an undersized LowCmd) are left at their previous
         // ctrl value -- the same "hold" behaviour as a PARALLEL command.
+    }
+
+    void LocomotionController::step_walk(const mjModel* m, mjData* d, const CommandSnapshot& snap) {
+        const WalkPolicy& policy = *walk_policy_;
+
+        // The network runs at its own control rate (50 Hz); the PD loop below runs every physics step.
+        if (d->time >= walk_next_eval_) {
+            walk_next_eval_ += policy.control_dt;
+            if (walk_next_eval_ < d->time) {
+                walk_next_eval_ = d->time + policy.control_dt;  // after a sim reset or a long pause
+            }
+
+            std::array<float, WalkPolicy::OBSERVATION_SIZE> obs{};
+            std::size_t k = 0;
+            const double* gyro = map_->sens_gyro >= 0 ? &d->sensordata[map_->sens_gyro] : &d->qvel[map_->root_dof_adr + 3];
+            for (int i = 0; i < 3; ++i) {
+                obs[k++] = static_cast<float>(gyro[i]);
+            }
+            // gravity direction seen from the base: world (0, 0, -1) rotated by the inverse base orientation
+            double inverse[4];
+            double gravity[3];
+            const double down[3] = {0.0, 0.0, -1.0};
+            mju_negQuat(inverse, &d->qpos[map_->root_qpos_adr + 3]);
+            mju_rotVecQuat(gravity, down, inverse);
+            for (int i = 0; i < 3; ++i) {
+                obs[k++] = static_cast<float>(gravity[i]);
+            }
+            for (std::size_t i = 0; i < JOINT_COUNT; ++i) {
+                obs[k++] = static_cast<float>(d->qpos[map_->qpos_adr[i]] - policy.default_pose[i]);
+            }
+            for (std::size_t i = 0; i < JOINT_COUNT; ++i) {
+                obs[k++] = static_cast<float>(d->qvel[map_->dof_adr[i]]);
+            }
+            for (std::size_t i = 0; i < JOINT_COUNT; ++i) {
+                obs[k++] = static_cast<float>(walk_action_[i]);
+            }
+            for (int i = 0; i < 3; ++i) {
+                obs[k++] = static_cast<float>(std::clamp(snap.walk[i], policy.command_limits[i][0], policy.command_limits[i][1]));
+            }
+
+            walk_action_ = policy.evaluate(obs);
+            for (std::size_t i = 0; i < JOINT_COUNT; ++i) {
+                walk_target_[i] = policy.default_pose[i] + walk_action_[i] * policy.action_scale[i];
+            }
+        }
+
+        // RotateHead keeps working while walking: once a head command has arrived, it owns the two head joints.
+        std::array<double, JOINT_COUNT> q_ref = walk_target_;
+        if (snap.head_commanded) {
+            apply_head_target(q_ref, snap.head_pitch, snap.head_yaw);
+        }
+        for (std::size_t i = 0; i < JOINT_COUNT; ++i) {
+            const int act = map_->act_id[i];
+            double tau    = policy.kp[i] * (q_ref[i] - d->qpos[map_->qpos_adr[i]]) - policy.kd[i] * d->qvel[map_->dof_adr[i]];
+            if (m->actuator_forcelimited[act] != 0) {
+                tau = std::clamp(tau, m->actuator_forcerange[2 * act], m->actuator_forcerange[2 * act + 1]);
+            }
+            d->ctrl[act] = tau;
+        }
     }
 
     void LocomotionController::update_fall_detection(const mjModel* /*m*/, mjData* d) {

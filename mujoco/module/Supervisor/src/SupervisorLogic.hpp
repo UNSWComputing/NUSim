@@ -102,6 +102,10 @@ namespace k1sim::module::supervisor {
 
         // Whether process() has seen a packet yet (idle vs live) — purely
         // informational, e.g. for a Startup log line.
+        [[nodiscard]] const SupervisorConfig& config() const {
+            return cfg_;
+        }
+
         [[nodiscard]] bool has_seen_packet() const {
             return prev_.has_value();
         }

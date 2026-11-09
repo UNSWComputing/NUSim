@@ -1,4 +1,5 @@
-# Full soccer simulation: physics + DDS bridge + locomotion + head camera + GameController supervisor + viewer.
+# Full soccer simulation: physics + DDS bridge + locomotion + head camera + GameController supervisor + viewer
+# (+ the browser viewer / recorder, which stays inactive unless --web or --record is given).
 # ConsoleLog first so it captures startup logs.
 k1sim_role(
   ConsoleLog
@@ -8,4 +9,6 @@ k1sim_role(
   Camera
   Supervisor
   Viewer
+  WebViewer
+  Referee
 )

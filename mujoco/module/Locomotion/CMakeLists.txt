@@ -1,2 +1,2 @@
 add_library(k1sim_module_locomotion STATIC src/Locomotion.cpp src/LocomotionController.cpp)
-target_link_libraries(k1sim_module_locomotion PUBLIC k1sim_shared)
+target_link_libraries(k1sim_module_locomotion PUBLIC k1sim_shared nlohmann_json::nlohmann_json)

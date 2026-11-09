@@ -11,6 +11,11 @@
 enabled: false
 gc_port: 3838 # RoboCup GameController broadcast port (protocol version 20)
 
+# The GameController's teams.yaml (its config directory), to show team names instead of
+# "Team <number>" on the browser viewer's scoreboard. Empty: $GAMECONTROLLER_CONFIG/teams.yaml
+# is tried, then the numbers are shown.
+teams_file: ""
+
 # Optional extra ball-centre resets beyond the core kickoff rule (entering
 # READY, or entering PLAYING — see SupervisorLogic::process for why those two
 # alone already cover the SET->PLAYING kickoff whistle).
@@ -52,4 +57,4 @@ robots:
     # exact per-player spacing rules aren't implemented, this is a single
     # configurable spot (see the task brief: "make it general over a
     # configurable list of body names", not exact rule fidelity).
-    penalty_pose: {x: 2.0, y: 3.5, z: 0.555, yaw: 0.0}
+    penalty_pose: {x: -1.0, y: -5.2, z: 0.555, yaw: 1.5708} # outside the M-Field touchline (y = -4.5), facing in
