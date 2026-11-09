@@ -1,0 +1,29 @@
+# Built-in referee (module::Referee, started with --referee): the official RoboCup Humanoid Soccer League
+# GameController running inside the sim. It keeps the game state and clocks by the real rules, is operated from
+# the browser viewer's referee panel, and announces the game exactly like the GameController application does:
+# RoboCupGameControlData packets (protocol version 20) on UDP port 3838, twice a second.
+#
+# It uses the GameController's own library, which is built from its source checkout:
+#   cd <GameController> && cargo build -r -p game_controller_api
+
+# The GameController source checkout. Empty: the environment variable GAMECONTROLLER_DIR.
+gamecontroller_dir: ""
+
+# One of the GameController's competitions (a directory in its config/).
+competition: middle_advanced
+
+# The teams: number as in the GameController's config/teams.yaml, and jersey colours
+# (blue, red, yellow, black, white, green, orange, purple, brown, gray).
+# The home team is the first --game team (the main robot's), defending the -x goal.
+home: {number: 1, field_player_colour: blue, goalkeeper_colour: white}
+away: {number: 18, field_player_colour: red, goalkeeper_colour: yellow}
+kick_off: home # home | away
+
+# The real GameController keeps telling the robots "set" for a while after play has started, so that they have
+# to listen for the whistle. true = tell them immediately (the GameController's "no delay" test option).
+no_delay: false
+
+# Where the packets go. The broadcast address reaches every robot on the network, 127.0.0.1 robot software on
+# this machine.
+port: 3838
+targets: ["255.255.255.255", "127.0.0.1"]

@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NUSim viewer</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --panel: rgba(16, 20, 26, 0.72); --line: rgba(255, 255, 255, 0.14); --text: #f2f4f7; --dim: #a8b0bb; --accent: #4ade80; --left: #3b82f6; --right: #ef4444; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0e12; color: var(--text); font: 14px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #vignette { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.30) 100%); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+
+  #scoreboard { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); display: flex; align-items: stretch; overflow: hidden; font-variant-numeric: tabular-nums; }
+  #scoreboard[hidden] { display: none; }
+  #scoreboard .team { padding: 9px 16px; font-weight: 600; max-width: 26vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #scoreboard .team.l { border-left: 5px solid var(--left); }
+  #scoreboard .team.r { border-right: 5px solid var(--right); }
+  #scoreboard .score { padding: 9px 12px; font-weight: 700; font-size: 16px; background: rgba(255, 255, 255, 0.08); }
+  #scoreboard .clock { padding: 9px 14px; color: var(--dim); }
+  #mode { position: fixed; top: 62px; left: 50%; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; max-width: min(92vw, 760px); font-size: 12px; }
+  #mode:empty { display: none; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); white-space: nowrap; }
+  .chip b { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .chip i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+  .chip.phase { color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; }
+  .chip.state { text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; color: #cbd5e1; }
+  .chip.state b { color: var(--text); }
+  .chip.state.ready { color: #fbbf24; border-color: rgba(251, 191, 36, 0.5); }
+  .chip.state.set { color: #60a5fa; border-color: rgba(96, 165, 250, 0.5); }
+  .chip.state.playing { color: #4ade80; border-color: rgba(74, 222, 128, 0.5); }
+  .chip.state.playing i { animation: pulse 1.4s ease-in-out infinite; }
+  .chip.state.finished { color: #94a3b8; }
+  .chip.penalty { background: rgba(127, 29, 29, 0.78); border-color: rgba(248, 113, 113, 0.55); color: #fee2e2; }
+  .chip.penalty i { background: var(--team, #fff); width: 10px; height: 10px; box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.7); }
+  @keyframes pulse { 50% { opacity: 0.25; } }
+  @media (prefers-reduced-motion: reduce) { .chip.state.playing i { animation: none; } }
+
+  #status { position: fixed; top: 14px; left: 14px; padding: 7px 12px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; display: flex; align-items: center; gap: 7px; }
+  #status i { width: 8px; height: 8px; border-radius: 50%; background: #6b7280; }
+  #status.live i { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+  #status.replay i { background: #f59e0b; }
+
+  #cams { position: fixed; top: 14px; right: 14px; padding: 4px; display: flex; gap: 2px; }
+  button { font: inherit; color: var(--text); background: transparent; border: 0; border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+  button:hover { background: rgba(255, 255, 255, 0.10); }
+  button.on { background: rgba(255, 255, 255, 0.18); }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  #bar { position: fixed; left: 14px; right: 14px; bottom: 14px; padding: 8px 10px; display: flex; align-items: center; gap: 8px; }
+  #bar input[type=range] { flex: 1; min-width: 60px; accent-color: var(--accent); }
+  #bar .t { color: var(--dim); font-variant-numeric: tabular-nums; font-size: 12px; white-space: nowrap; }
+  #bar select, #cams select { font: inherit; color: var(--text); background: rgba(255, 255, 255, 0.08); border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; }
+  #play { width: 38px; font-size: 15px; }
+  #golive.on { background: #ef4444; }
+
+  #referee { position: fixed; top: 100px; right: 14px; width: 264px; max-height: calc(100vh - 186px); overflow-y: auto; padding: 10px 12px 12px; font-size: 13px; }
+  #referee[hidden] { display: none; }
+  #referee header { display: flex; align-items: center; justify-content: space-between; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; font-size: 12px; color: var(--dim); }
+  #referee.collapsed > :not(header) { display: none; }
+  #referee h4 { margin: 12px 0 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
+  #referee .row { display: flex; flex-wrap: wrap; gap: 6px; }
+  #referee .row > * { flex: 1 1 auto; }
+  #referee button { background: rgba(255, 255, 255, 0.10); border: 1px solid var(--line); padding: 7px 8px; font-weight: 600; white-space: nowrap; }
+  #referee button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.20); }
+  #referee button:disabled { opacity: 0.32; cursor: default; }
+  #referee button.go { background: #15803d; border-color: #16a34a; }
+  #referee button.go:hover:not(:disabled) { background: #16a34a; }
+  #referee button.halt { background: #b91c1c; border-color: #dc2626; }
+  #referee button.halt:hover:not(:disabled) { background: #dc2626; }
+  #referee button.home { border-left: 4px solid var(--left); }
+  #referee button.away { border-left: 4px solid var(--right); }
+  #referee select { width: 100%; font: inherit; color: var(--text); background: rgba(255, 255, 255, 0.08); border: 1px solid var(--line); border-radius: 8px; padding: 6px; }
+  #referee .players button { flex: 0 0 auto; min-width: 42px; font-variant-numeric: tabular-nums; }
+  #referee .players button.out { background: #b91c1c; border-color: #dc2626; }
+  #referee .team { margin: 8px 0 4px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #refToast { margin-top: 10px; padding: 6px 8px; border-radius: 8px; background: rgba(220, 38, 38, 0.25); border: 1px solid #dc2626; }
+  #refToast:empty { display: none; }
+  #refState { margin-top: 8px; font-weight: 700; font-size: 15px; }
+
+  #hint { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+  #hint div { padding: 16px 22px; text-align: center; color: var(--dim); max-width: 420px; }
+  #hint b { color: var(--text); display: block; margin-bottom: 4px; font-size: 16px; }
+  #hint.hidden { display: none; }
+  #drop { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(11, 14, 18, 0.7); border: 3px dashed var(--accent); font-size: 20px; }
+  #drop.on { display: flex; }
+
+  @media (max-width: 640px) {
+    #referee { top: auto; bottom: 110px; left: 14px; right: 14px; width: auto; max-height: 46vh; }
+    #status { top: auto; bottom: 68px; }
+    #cams { top: auto; bottom: 68px; }
+    #bar .wide { display: none; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="vignette"></div>
+
+<div id="scoreboard" class="panel" hidden>
+  <div class="team l" id="teamL">Home</div>
+  <div class="score" id="score">0 : 0</div>
+  <div class="team r" id="teamR">Away</div>
+  <div class="clock" id="clock">00:00</div>
+</div>
+<div id="mode" role="status"></div>
+
+<div id="status" class="panel"><i></i><span>CONNECTING</span></div>
+
+<div id="cams" class="panel" role="group" aria-label="Camera">
+  <button data-cam="free" title="Free camera (1)">Free</button>
+  <button data-cam="follow" title="Follow the ball (2)">Ball</button>
+  <button data-cam="tv" title="Broadcast camera (3)">TV</button>
+  <button data-cam="top" title="Top-down camera (4)">Top</button>
+  <select id="venue" title="Venue" aria-label="Venue"><option value="village">Village Green</option><option value="stadium">Stadium</option></select>
+</div>
+
+<div id="bar" class="panel">
+  <button id="play" title="Play / pause (space)" aria-label="Play or pause">⏸</button>
+  <span class="t" id="tnow">0:00.0</span>
+  <input id="seek" type="range" min="0" max="1" step="0.001" value="1" aria-label="Timeline">
+  <span class="t" id="tend">0:00.0</span>
+  <select id="speed" title="Playback speed" aria-label="Playback speed">
+    <option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
+  </select>
+  <button id="golive" title="Jump back to live (L)">LIVE</button>
+  <button id="open" class="wide" title="Open a recording file">Open</button>
+  <button id="save" class="wide" title="Save what you have watched as a recording file">Save</button>
+  <input id="file" type="file" hidden>
+</div>
+
+<aside id="referee" class="panel" hidden aria-label="Referee">
+  <header><span>Referee</span><button id="refToggle" title="Show or hide the referee panel" aria-label="Show or hide the referee panel">–</button></header>
+  <div id="refState"></div>
+
+  <h4>Game</h4>
+  <div class="row">
+    <button class="home" data-ref="action=kickoff&side=home" data-legal="kickoff:home" title="Ready: teams take their positions for the home team's kick-off">Kick-off <span data-team="0">Home</span></button>
+    <button class="away" data-ref="action=kickoff&side=away" data-legal="kickoff:away" title="Ready: teams take their positions for the away team's kick-off">Kick-off <span data-team="1">Away</span></button>
+  </div>
+  <div class="row" style="margin-top: 6px">
+    <button data-ref="action=set" data-legal="set" title="Set: everybody stands still">Set</button>
+    <button class="go" data-ref="action=play" data-legal="play" title="Whistle: play">Play</button>
+    <button class="halt" data-ref="action=stop" data-legal="stop" title="Stop play">Stop</button>
+    <button class="go" data-ref="action=resume" data-legal="resume" title="Resume play">Resume</button>
+  </div>
+  <div class="row" style="margin-top: 6px">
+    <button data-ref="action=finish_half" data-legal="finish_half">End half</button>
+    <button data-ref="action=switch_half" data-legal="switch_half">Second half</button>
+    <button data-ref="action=undo" data-legal="undo" title="Take back the last decision">Undo</button>
+  </div>
+
+  <h4>Goal</h4>
+  <div class="row">
+    <button class="home" data-ref="action=goal&side=home" data-legal="goal:home"><span data-team="0">Home</span></button>
+    <button class="away" data-ref="action=goal&side=away" data-legal="goal:away"><span data-team="1">Away</span></button>
+  </div>
+
+  <h4>Set play for</h4>
+  <select id="refSetPlay" aria-label="Set play">
+    <option value="direct_free_kick">Direct free kick</option><option value="indirect_free_kick">Indirect free kick</option>
+    <option value="penalty_kick">Penalty kick</option><option value="throw_in">Throw-in</option>
+    <option value="goal_kick">Goal kick</option><option value="corner_kick">Corner kick</option>
+  </select>
+  <div class="row" style="margin-top: 6px">
+    <button class="home" data-ref="action=setplay&side=home" data-legal="setplay:home" data-arg="refSetPlay"><span data-team="0">Home</span></button>
+    <button class="away" data-ref="action=setplay&side=away" data-legal="setplay:away" data-arg="refSetPlay"><span data-team="1">Away</span></button>
+    <button data-ref="action=finish_set_play" data-legal="finish_set_play">Done</button>
+  </div>
+
+  <h4>Players · click to penalise or release</h4>
+  <select id="refCall" aria-label="Penalty">
+    <option value="pushing">Pushing</option><option value="illegal_position">Illegal position</option>
+    <option value="motion_in_set">Motion in set</option><option value="motion_in_stop">Motion in stop</option>
+    <option value="ball_holding">Ball holding</option><option value="playing_with_arms_hands">Playing with arms / hands</option>
+    <option value="leaving_the_field">Leaving the field</option><option value="incapable_robot">Incapable robot</option>
+    <option value="request_for_pick_up">Request for pick-up</option><option value="local_game_stuck">Local game stuck</option>
+    <option value="caution">Caution (yellow card)</option><option value="send_off">Send off (red card)</option>
+  </select>
+  <div id="refPlayers"></div>
+
+  <h4>Timeout</h4>
+  <div class="row">
+    <button class="home" data-ref="action=timeout&side=home" data-legal="timeout:home"><span data-team="0">Home</span></button>
+    <button class="away" data-ref="action=timeout&side=away" data-legal="timeout:away"><span data-team="1">Away</span></button>
+    <button data-ref="action=timeout" data-legal="timeout:none">Referee</button>
+    <button data-ref="action=stuck" data-legal="stuck" title="Global game stuck">Stuck</button>
+  </div>
+  <div id="refToast" role="status"></div>
+</aside>
+
+<div id="hint"><div class="panel"><b>Waiting for the simulation</b>Start the simulator with <code>--web</code>, or drop a recording file here.</div></div>
+<div id="drop">Drop recording to replay</div>
+
+<script type="module" src="viewer.js"></script>
+</body>
+</html>

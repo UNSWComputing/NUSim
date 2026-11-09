@@ -69,6 +69,8 @@ add_subdirectory(module/Locomotion)
 add_subdirectory(module/Camera)
 add_subdirectory(module/Supervisor)
 add_subdirectory(module/Viewer)
+add_subdirectory(module/WebViewer)
+add_subdirectory(module/Referee)
 
 # --- Roles → bin/<role_path>/<role_name> (see cmake/K1SimRole.cmake) ---
 set(K1SIM_ROLE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cmake)

@@ -89,6 +89,7 @@ binary (`argparse.REMAINDER`), so sim flags are never parsed by `./b`.
 | `./b roles` | List sim roles and their enabled/disabled state. |
 | `./b image` | (Re)build the docker toolchain image. |
 | `./b test` | Build and run the C++ unit tests with the selected backend. |
+| `./b replay <file> [--port N]` | Replay a match recorded with `--record` in the browser viewer; needs no simulator. |
 
 ### `sim/soccer` flags
 
@@ -104,6 +105,12 @@ Parsed in [`mujoco/shared/CliOptions.hpp`](mujoco/shared/CliOptions.hpp); `--hel
 | `--keyframe <name>` | `ready` | Startup keyframe for the **main** robot (e.g. `lying_front` to start fallen and exercise the get-up chain). |
 | `--rtf <factor>` | `simulation.yaml`'s `real_time_factor` | Real-time factor; `0` = free-run (uncapped, for tests/sweeps). |
 | `--robots <n>` | `1` | **Total** K1s on the field, 1–20. `n−1` extra copies are attached via MuJoCo's `mjSpec` attach API with `subNN_` name prefixes, so the main robot's unprefixed joint/sensor names — and every DDS and shared-memory contract — are untouched. Extras spawn standing on a 5×4 grid clear of the `y = 0` main-robot/ball lane and are PD-held at the `ready` pose: uncontrolled obstacles for dribbling and navigation practice, not extra DDS endpoints. Sim resets re-place them; `--keyframe` does not apply to them. |
+| `--web` | off | Serve the browser 3D viewer at `http://127.0.0.1:8080/` (shadows, sky, timeline with pause/scrub/replay, broadcast and follow-ball cameras). Needs no GL context, so it works together with `--headless`; the page loads three.js from a CDN on first use. |
+| `--web-host <addr>` | `127.0.0.1` | Address the browser viewer listens on (`0.0.0.0` to watch from another machine). |
+| `--web-port <port>` | `8080` | Port the browser viewer listens on. |
+| `--record <file>` | none | Record the match to a file. Replay it with `./b replay <file>`, or drop the file onto a running browser viewer. Works without `--web`. |
+| `--referee` | off | Run the official [GameController](https://github.com/RoboCup-HumanoidSoccerLeague/GameController) **inside** the sim and operate it from the browser viewer's referee panel (kick-off, set, play, stop, goals, set plays, timeouts, penalise / release a player, undo); buttons are only enabled when the rules allow the decision. Game state, clocks and rules come from the GameController's own library, and the game is announced exactly as the application does it (`RoboCupGameControlData` version 20 on UDP port 3838), so robot software hears no difference. Needs the GameController checkout: build its library once with `cargo build -r -p game_controller_api`, and point `GAMECONTROLLER_DIR` (or `gamecontroller_dir` in `config/referee.yaml`) at it. Teams, colours and competition are set in `config/referee.yaml`. Implies `--web`; ball and robot placement work as with `--gamecontroller`. |
+| `--gamecontroller` (`--gc`) | off | Obey the RoboCup [GameController](https://github.com/RoboCup-HumanoidSoccerLeague/GameController) (protocol version 20, UDP port 3838): the ball goes to the centre spot on kick-off, goals and half changes, and a robot the referee penalises is moved outside the touchline and put back when the penalty ends. With `--game <n>` every robot of both teams is covered (the first `n` robots are the first team in the packet, player numbers 1 to `n`); otherwise the robots listed in `config/supervisor.yaml`. The port is opened shareable, so robot software on the same host can listen too. The browser viewer shows the score, clock, game state, team colours and penalties; set `GAMECONTROLLER_CONFIG` to the GameController's `config` directory (or `teams_file` in `supervisor.yaml`) to show team names. Same as `enabled: true` in `supervisor.yaml`. |
 | `--help`, `-h` | — | Print the flag list and exit. |
 
 ```bash
@@ -115,6 +122,9 @@ Parsed in [`mujoco/shared/CliOptions.hpp`](mujoco/shared/CliOptions.hpp); `--hel
 ./b run sim/soccer --rtf 0                               # free-run (uncapped real-time factor)
 ./b run sim/soccer --keyframe lying_front                # start fallen, to exercise GetUp
 ./b run sim/soccer --robots 5                            # 4 extra K1s on the field (max 20 total)
+./b run sim/soccer --headless --web --record match.rcsr  # watch in the browser and keep a replay
+./b run sim/soccer --game 3 --on-field-positions --web --gamecontroller  # a 3 v 3 the GameController referees
+GAMECONTROLLER_DIR=~/GameController ./b run sim/soccer --game 3 --on-field-positions --referee  # ... refereed from the browser
 ```
 
 ### Environment variables

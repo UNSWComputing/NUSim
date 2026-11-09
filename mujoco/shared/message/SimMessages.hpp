@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <mujoco/mujoco.h>
 #include <mutex>
+#include <string>
+#include <vector>
 
 #include "shared/k1/JointIndex.hpp"
 
@@ -59,6 +61,49 @@ namespace k1sim::message {
 
     // Emitted once by module::Simulation after the model is loaded. The mutex guards
     // mjData; mjModel is immutable after load. Pointers are valid Startup->Shutdown.
+    // What the referee (RoboCup GameController) last announced. Emitted by module::Supervisor for every packet it
+    // accepts; shown on the browser viewer's scoreboard.
+    struct GameState {
+        std::string left;        // name of the first team in the packet
+        std::string right;       // name of the second team in the packet
+        int score_left     = 0;
+        int score_right    = 0;
+        int secs_remaining = 0;  // seconds left in the current half
+        std::string mode;        // words separated by " | ", e.g. "first half | PLAYING"
+
+        std::string state;        // INITIAL, READY, SET, PLAYING or FINISHED
+        bool first_half    = true;
+        int secondary_time = 0;   // seconds of the secondary clock (ready time, free kick, ...)
+        int colour_left    = 0;   // field player colours, GameController numbering (0 blue, 1 red, ...)
+        int colour_right   = 1;
+        int kicking_side   = -1;  // 0 = left team, 1 = right team, -1 = nobody
+
+        struct Robot {            // one simulated robot the GameController governs
+            std::string body;     // its root body in the model
+            int side   = 0;       // 0 = left team, 1 = right team
+            int player = 1;       // player number, starting at 1
+            std::string penalty;  // empty while in play, else the reason (e.g. "PLAYER_PUSHING")
+            int penalty_secs = 0; // estimated seconds until the penalty ends
+        };
+        std::vector<Robot> robots;
+    };
+
+    // A referee decision, from the browser viewer's referee panel to module::Referee.
+    struct RefereeCommand {
+        std::string action;  // kickoff, set, play, stop, resume, goal, penalize, unpenalize, setplay, timeout, ...
+        std::string side;    // "home", "away" or empty
+        int player = 0;      // player number for penalize / unpenalize
+        std::string arg;     // penalty call or set play, e.g. "pushing" or "corner_kick"
+    };
+
+    // What the built-in referee currently allows, and the outcome of the last command.
+    struct RefereeStatus {
+        std::vector<std::string> legal;  // e.g. "kickoff:home", "set", "goal:away"
+        int result_seq = 0;              // counts the commands handled so far
+        bool result_ok = true;
+        std::string result_text;
+    };
+
     struct SimHandles {
         const mjModel* model              = nullptr;
         mjData* data                      = nullptr;

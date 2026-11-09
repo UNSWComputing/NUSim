@@ -135,7 +135,8 @@ build fastdds https://github.com/eProsima/Fast-DDS.git "$FASTDDS_TAG" \
     -DTHIRDPARTY_TinyXML2=FORCE \
     -DCOMPILE_EXAMPLES=OFF \
     -DCOMPILE_TOOLS=OFF \
-    -DSECURITY=OFF
+    -DSECURITY=OFF \
+    -DNO_TLS=ON # the sim uses no TLS transport, and the vendored Asio does not compile against OpenSSL 4 (Homebrew's default)
 
 # --- fastddsgen (required, CMake generates the DDS types at build time) ------
 if [ ! -f "$PREFIX/share/fastddsgen/java/fastddsgen.jar" ]; then
