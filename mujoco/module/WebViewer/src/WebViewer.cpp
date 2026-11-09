@@ -1,10 +1,13 @@
 #include "module/WebViewer/src/WebViewer.hpp"
 
 #include <cstdlib>
+#include <map>
 #include <sstream>
 #include <string>
 
 #include "shared/CliOptions.hpp"
+#include "shared/k1/BoosterApi.hpp"
+#include "shared/message/Commands.hpp"
 
 namespace k1sim::module {
 
@@ -45,7 +48,8 @@ namespace k1sim::module {
             stream_->set_model(handles.model);  // the model itself is never modified while the sim runs
         });
 
-        on<Trigger<message::SimStateUpdate>, Single>().then([this] {
+        on<Trigger<message::SimStateUpdate>, Single>().then([this](const message::SimStateUpdate& state) {
+            robot_mode_.store(state.mode);
             std::lock_guard<std::mutex> lock(mutex_);
             if (handles_.model == nullptr || (updates_++ % 2) != 0) {
                 return;
@@ -88,26 +92,50 @@ namespace k1sim::module {
                  << ",\"text\":" << web::WebStream::quote(status.result_text) << "}";
             stream_->set_referee(json.str());
         });
-        if (cli().referee) {
-            stream_->set_command_handler([this](const std::string& query) {
-                auto command = std::make_unique<message::RefereeCommand>();
-                std::istringstream pairs(query);
-                std::string pair;
-                while (std::getline(pairs, pair, '&')) {
-                    const std::size_t equals = pair.find('=');
-                    if (equals == std::string::npos) {
-                        continue;
-                    }
-                    const std::string key   = pair.substr(0, equals);
-                    const std::string value = pair.substr(equals + 1);
-                    if (key == "action") command->action = value;
-                    if (key == "side") command->side = value;
-                    if (key == "arg") command->arg = value;
-                    if (key == "player") command->player = std::atoi(value.c_str());
+        // What the viewer may ask for: referee decisions (--referee), driving the robot with the keyboard (when
+        // the sim has a built-in walk policy) and a reset of the simulation.
+        on<Trigger<message::LocomotionInfo>>().then([this](const message::LocomotionInfo& info) {
+            can_walk_.store(info.walk);
+            stream_->set_status("drive", std::string("{\"type\":\"drive\",\"walk\":") + (info.walk ? "true" : "false") + "}");
+        });
+        stream_->set_command_handler([this](const std::string& path, const std::string& query) {
+            std::map<std::string, std::string> values;
+            std::istringstream pairs(query);
+            std::string pair;
+            while (std::getline(pairs, pair, '&')) {
+                const std::size_t equals = pair.find('=');
+                if (equals != std::string::npos) {
+                    values[pair.substr(0, equals)] = pair.substr(equals + 1);
                 }
+            }
+            auto number = [&values](const char* key) { return values.count(key) != 0 ? std::atof(values[key].c_str()) : 0.0; };
+
+            if (path == "/referee" && cli().referee) {
+                auto command    = std::make_unique<message::RefereeCommand>();
+                command->action = values["action"];
+                command->side   = values["side"];
+                command->arg    = values["arg"];
+                command->player = static_cast<int>(number("player"));
                 emit(command);
-            });
-        }
+                return true;
+            }
+            if (path == "/walk" && can_walk_.load()) {
+                // Driving a robot that is not in a walking mode switches it to one first, like a client's
+                // ChangeMode would.
+                const int mode = robot_mode_.load();
+                if (mode != booster::WALKING && mode != booster::SOCCER) {
+                    emit(std::make_unique<message::ModeChangeRequest>(message::ModeChangeRequest{booster::WALKING}));
+                }
+                emit(std::make_unique<message::WalkCommand>(message::WalkCommand{number("vx"), number("vy"), number("wz")}));
+                return true;
+            }
+            if (path == "/reset") {
+                emit(std::make_unique<message::SimResetRequest>());
+                emit(std::make_unique<message::ModeChangeRequest>(message::ModeChangeRequest{booster::PREPARE}));
+                return true;
+            }
+            return false;
+        });
 
         on<Shutdown>().then([this] {
             stream_->stop();

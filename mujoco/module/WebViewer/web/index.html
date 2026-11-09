@@ -80,6 +80,12 @@
   #refToast:empty { display: none; }
   #refState { margin-top: 8px; font-weight: 700; font-size: 15px; }
 
+  #drive { position: fixed; left: 14px; bottom: 68px; padding: 8px 10px; font-size: 12px; color: var(--dim); display: grid; grid-template-columns: repeat(3, 26px) auto; gap: 4px 4px; align-items: center; }
+  #drive[hidden] { display: none; }
+  #drive kbd { display: grid; place-items: center; height: 24px; border-radius: 6px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.08); font: 600 12px system-ui, sans-serif; color: var(--text); }
+  #drive kbd.on { background: var(--accent); color: #052e16; border-color: var(--accent); }
+  #drive span { padding-left: 8px; }
+
   #hint { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
   #hint div { padding: 16px 22px; text-align: center; color: var(--dim); max-width: 420px; }
   #hint b { color: var(--text); display: block; margin-bottom: 4px; font-size: 16px; }
@@ -90,6 +96,7 @@
   @media (max-width: 640px) {
     #referee { top: auto; bottom: 110px; left: 14px; right: 14px; width: auto; max-height: 46vh; }
     #status { top: auto; bottom: 68px; }
+    #drive { display: none; }
     #cams { top: auto; bottom: 68px; }
     #bar .wide { display: none; }
   }
@@ -196,6 +203,11 @@
   </div>
   <div id="refToast" role="status"></div>
 </aside>
+
+<div id="drive" class="panel" hidden aria-label="Keyboard driving">
+  <kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd><span>drive · Shift = fast</span>
+  <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>R = reset the sim</span>
+</div>
 
 <div id="hint"><div class="panel"><b>Waiting for the simulation</b>Start the simulator with <code>--web</code>, or drop a recording file here.</div></div>
 <div id="drop">Drop recording to replay</div>

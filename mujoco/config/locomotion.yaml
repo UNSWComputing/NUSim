@@ -13,3 +13,10 @@ fall:
   fallen_height: 0.35 # m — base below this => HAS_FALLEN even if the trunk is upright
   # (collapsed/kneeling poses read IS_READY on tilt alone, which starves the
   # NUbots get-up retry loop; standing ~0.55, walking crouch >= 0.45)
+
+# Built-in walk. Empty (the default): the sim only executes joint commands and walking is the robot software's
+# job, as described above. With the directory of a walk policy here (or --walk-policy <dir>, or
+# $K1SIM_WALK_POLICY), ChangeMode(WALKING / SOCCER) + Move(vx, vy, vyaw) walk the robot inside the sim, the way
+# Booster's motion software does on the real robot, and the browser viewer can drive it from the keyboard.
+# The directory holds scene.json and policy.bin as exported by booster_mjlab (its website/static/demo).
+walk_policy: ""

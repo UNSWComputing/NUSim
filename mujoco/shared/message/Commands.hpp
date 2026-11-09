@@ -58,6 +58,11 @@ namespace k1sim::message {
     // StepController keeps its mode/targets (see SimCore::reset).
     struct SimResetRequest {};
 
+    // What module::Locomotion can do by itself, announced once at startup.
+    struct LocomotionInfo {
+        bool walk = false;  // a built-in walk policy is loaded: WALKING / SOCCER mode obey Move
+    };
+
 }  // namespace k1sim::message
 
 #endif  // K1SIM_SHARED_MESSAGE_COMMANDS_HPP

@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <deque>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mujoco/mujoco.h>
 #include <mutex>
@@ -56,9 +57,14 @@ namespace k1sim::web {
         // latest one. Repeats are dropped.
         void set_referee(const std::string& json);
 
-        // Called (on a connection thread) with the query string of every POST /referee, e.g.
-        // "action=goal&side=home": a button pressed on the viewer's referee panel.
-        void set_command_handler(std::function<void(const std::string&)> handler);
+        // Publishes a small JSON status object {"type":"<name>", ...} such as what the robot can be driven to do.
+        // New viewers get the latest one of each name. Repeats are dropped.
+        void set_status(const std::string& name, const std::string& json);
+
+        // Called (on a connection thread) for every POST the viewer makes, with the path and the query string,
+        // e.g. ("/referee", "action=goal&side=home") for a button on the referee panel or ("/walk", "vx=0.5")
+        // for the keyboard. Returns whether the path is one it serves.
+        void set_command_handler(std::function<bool(const std::string&, const std::string&)> handler);
 
         // Quotes and escapes a string for use in JSON.
         static std::string quote(const std::string& text);
@@ -101,7 +107,8 @@ namespace k1sim::web {
         std::string game_json_;                         // its payload, to publish changes only
         Message referee_;                               // latest referee status, likewise
         std::string referee_json_;
-        std::function<void(const std::string&)> command_handler_;
+        std::map<std::string, std::pair<std::string, Message>> statuses_;  // name -> latest {json, framed}
+        std::function<bool(const std::string&, const std::string&)> command_handler_;
     };
 
 }  // namespace k1sim::web

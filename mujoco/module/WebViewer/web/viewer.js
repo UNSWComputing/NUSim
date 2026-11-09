@@ -1102,6 +1102,9 @@ function handleText(text) {
     latestGame = message;
   } else if (message.type === 'referee') {
     showReferee(message);
+  } else if (message.type === 'drive') {
+    driveAvailable = Boolean(message.walk);
+    $('drive').hidden = !driveAvailable || replayMode;
   }
 }
 
@@ -1195,6 +1198,7 @@ function loadRecording(buffer, label) {
 
   replayMode = true;
   $('referee').hidden = true;
+  $('drive').hidden = true;
   if (streamAbort) streamAbort.abort();
   frames.length = 0;
   latestGame = null;
@@ -1409,6 +1413,31 @@ function modeText(mode) {
   return String(mode).split('|').map((part) => part.trim()).filter((part) => part && !/^(False|True|none|-?\d+(\.\d+)?)$/.test(part)).map((part) => part.replace(/_/g, ' ')).join('  ·  ');
 }
 
+// ---------------------------------------------------------------- driving the robot
+// With a simulator that can walk the robot itself (NUSim with a walk policy), the keyboard drives it:
+// W / S forwards and backwards, A / D sideways, Q / E turn, Shift faster. Releasing the keys stops it.
+
+let driveAvailable = false;
+const driveKeys = new Set();
+let driveSent = '';
+
+function updateDrive(fast) {
+  if (!driveAvailable || replayMode) return;
+  const axis = (plus, minus) => (driveKeys.has(plus) ? 1 : 0) - (driveKeys.has(minus) ? 1 : 0);
+  const speed = fast ? 1.0 : 0.5;
+  const vx = axis('w', 's') * speed, vy = axis('a', 'd') * 0.3, wz = axis('q', 'e') * 1.0;
+  const query = `vx=${vx}&vy=${vy}&wz=${wz}`;
+  if (query === driveSent) return;
+  driveSent = query;
+  fetch(`/walk?${query}`, { method: 'POST' }).catch(() => {});
+  for (const key of document.querySelectorAll('#drive kbd')) key.classList.toggle('on', driveKeys.has(key.textContent.toLowerCase()));
+}
+
+window.addEventListener('keyup', (event) => {
+  if (driveKeys.delete(event.key.toLowerCase())) updateDrive(event.shiftKey);
+});
+window.addEventListener('blur', () => { driveKeys.clear(); updateDrive(false); });
+
 // ---------------------------------------------------------------- referee panel
 // With a simulator that runs the GameController itself (NUSim --referee), the panel operates it: each button
 // posts a decision, and the simulator reports back which decisions the rules allow at the moment.
@@ -1574,7 +1603,15 @@ for (const button of document.querySelectorAll('#cams button')) button.addEventL
 
 window.addEventListener('keydown', (event) => {
   if (event.target instanceof HTMLSelectElement || event.metaKey || event.ctrlKey) return;
+  if (driveAvailable && 'wasdqe'.includes(event.key.toLowerCase()) && event.key.length === 1) {
+    driveKeys.add(event.key.toLowerCase());
+    updateDrive(event.shiftKey);
+    return;
+  }
   switch (event.key) {
+    case 'r': case 'R':
+      if (!replayMode) fetch('/reset', { method: 'POST' }).catch(() => {});
+      break;
     case ' ': event.preventDefault(); setPaused(!paused); break;
     case 'ArrowLeft': stepFrames(event.shiftKey ? -25 : -1); break;
     case 'ArrowRight': stepFrames(event.shiftKey ? 25 : 1); break;

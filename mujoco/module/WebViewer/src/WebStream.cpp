@@ -337,7 +337,22 @@ namespace k1sim::web {
         broadcast(referee_, false);
     }
 
-    void WebStream::set_command_handler(std::function<void(const std::string&)> handler) {
+    void WebStream::set_status(const std::string& name, const std::string& json) {
+        Message message;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            auto& entry = statuses_[name];
+            if (entry.first == json) {
+                return;
+            }
+            entry.first  = json;
+            entry.second = std::make_shared<const std::string>(framed(0, json));
+            message      = entry.second;
+        }
+        broadcast(message, false);
+    }
+
+    void WebStream::set_command_handler(std::function<bool(const std::string&, const std::string&)> handler) {
         std::lock_guard<std::mutex> lock(mutex_);
         command_handler_ = std::move(handler);
     }
@@ -453,18 +468,17 @@ namespace k1sim::web {
         const std::string query    = question == std::string::npos ? "" : path.substr(question + 1);
         path                       = path.substr(0, question);
 
-        if (method == "POST" && path == "/referee") {
-            std::function<void(const std::string&)> handler;
+        if (method == "POST") {
+            std::function<bool(const std::string&, const std::string&)> handler;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 handler = command_handler_;
             }
-            if (handler) {
-                handler(query);
+            if (handler && handler(path, query)) {
                 send_response(fd, "200 OK", "text/plain", "ok");
             }
             else {
-                send_response(fd, "404 Not Found", "text/plain", "No referee here.");
+                send_response(fd, "404 Not Found", "text/plain", "Not available.");
             }
         }
         else if (method != "GET") {
@@ -514,6 +528,9 @@ namespace k1sim::web {
             }
             if (referee_) {
                 client->queue.push_back(referee_);
+            }
+            for (const auto& status : statuses_) {
+                client->queue.push_back(status.second.second);
             }
             clients_.push_back(client);
         }

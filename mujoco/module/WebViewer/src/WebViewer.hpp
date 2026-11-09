@@ -1,6 +1,7 @@
 #ifndef K1SIM_MODULE_WEBVIEWER_HPP
 #define K1SIM_MODULE_WEBVIEWER_HPP
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -26,6 +27,8 @@ namespace k1sim::module {
         std::mutex mutex_;  // guards handles_ and updates_ (reactions may run on different pool threads)
         message::SimHandles handles_{};
         uint64_t updates_ = 0;
+        std::atomic<bool> can_walk_{false};           // the sim has a built-in walk policy
+        std::atomic<int> robot_mode_{0};              // the robot's current mode (booster::RobotMode)
     };
 
 }  // namespace k1sim::module

@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
+#include <string>
 #include <vector>
 #include <yaml-cpp/yaml.h>
 
@@ -15,6 +17,8 @@
 #include "shared/sim/ModelMap.hpp"
 #include "shared/sim/PdController.hpp"
 #include "shared/sim/StepController.hpp"
+
+#include "module/Locomotion/src/WalkPolicy.hpp"
 
 // LocomotionController is deliberately NUClear-free: it is exercised directly
 // (no PowerPlant/Reactor) by test/unit/test_locomotion.cpp, and is driven by
@@ -63,19 +67,31 @@ namespace k1sim::module {
         void request_mode_change(int mode);
         void set_low_cmd(int cmd_type, std::vector<message::MotorCmdData> motors);
 
+        // Built-in walk (config/locomotion.yaml walk_policy, or --walk-policy): with a policy loaded, WALKING and
+        // SOCCER mode walk at the velocity given here, like Booster's own motion software does on the robot.
+        void set_walk_command(double vx, double vy, double vyaw);
+        bool can_walk() const {
+            return walk_policy_.has_value();
+        }
+        const std::string& walk_policy_error() const {
+            return walk_policy_error_;
+        }
+
         // Test/introspection helper (harmless in production: read-only).
         bool is_initialized() const {
             return initialized_;
         }
 
     private:
-        enum class State { Damping, Prepare, Custom };
+        enum class State { Damping, Prepare, Custom, Walk };
 
         // Mailbox written by the setters above, read once per step() via a copy
         // taken under lock. `mode_seq` is an edge-trigger: step() remembers the
         // last value it consumed and acts only when the sequence has advanced.
         struct CommandSnapshot {
             double head_pitch = 0, head_yaw = 0;
+            bool head_commanded = false;
+            std::array<double, 3> walk{};
             uint64_t mode_seq  = 0;
             int requested_mode = booster::DAMPING;
             int low_cmd_type   = 1;
@@ -92,6 +108,7 @@ namespace k1sim::module {
         void step_damping(mjData* d);
         void step_prepare(const mjModel* m, mjData* d, const CommandSnapshot& snap);
         void step_custom(const mjModel* m, mjData* d, const CommandSnapshot& snap);
+        void step_walk(const mjModel* m, mjData* d, const CommandSnapshot& snap);
 
         void update_fall_detection(const mjModel* m, mjData* d);
 
@@ -120,9 +137,17 @@ namespace k1sim::module {
 
         uint64_t last_mode_seq_ = 0;
 
+        std::optional<WalkPolicy> walk_policy_;
+        std::string walk_policy_error_;                 // why no policy is loaded, if one was asked for
+        std::array<double, JOINT_COUNT> walk_action_{}; // the network's previous output
+        std::array<double, JOINT_COUNT> walk_target_{}; // joint targets until the next evaluation
+        double walk_next_eval_ = 0.0;                   // simulation time of the next evaluation
+
         // -- mailbox (guarded by cmd_mutex_) --
         mutable std::mutex cmd_mutex_;
         double head_pitch_ = 0, head_yaw_ = 0;
+        bool head_commanded_ = false;
+        std::array<double, 3> walk_{};
         uint64_t mode_seq_  = 0;
         int requested_mode_ = booster::DAMPING;
         int low_cmd_type_   = 1;

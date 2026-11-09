@@ -21,6 +21,7 @@ namespace k1sim {
         std::string web_host = "127.0.0.1";  // address the browser viewer listens on
         int web_port         = 8080;         // port the browser viewer listens on
         std::string record;               // file to record the match to (empty = no recording)
+        std::string walk_policy;          // directory of a walk policy (scene.json + policy.bin) for the built-in walk
         bool referee        = false;      // run the built-in GameController (module::Referee), operated from the browser viewer
         bool gamecontroller = false;      // listen to the RoboCup GameController (module::Supervisor), whatever supervisor.yaml says
     };
@@ -92,6 +93,9 @@ namespace k1sim {
                     std::exit(1);
                 }
             }
+            else if (arg == "--walk-policy") {
+                opts.walk_policy = value("--walk-policy");
+            }
             else if (arg == "--referee") {
                 opts.referee = true;
             }
@@ -124,6 +128,8 @@ namespace k1sim {
                     "  --web-host <addr>   address the browser viewer listens on (default 127.0.0.1)\n"
                     "  --web-port <port>   port the browser viewer listens on (default 8080)\n"
                     "  --record <file>     record the match to a file, replayable in the browser viewer\n"
+                    "  --walk-policy <dir> built-in walk: WALKING / SOCCER mode obey Move, and the browser viewer\n"
+                    "                      drives the robot with W A S D Q E (a booster_mjlab policy export)\n"
                     "  --referee           run the GameController inside the sim, operated from the browser\n"
                     "                      viewer's referee panel (see config/referee.yaml; implies --web)\n"
                     "  --gamecontroller    obey the RoboCup GameController: ball and robot placement, penalties\n"
