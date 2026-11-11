@@ -1,0 +1,36 @@
+# On-screen viewer cameras (module::Viewer). Everything here can be changed live from the
+# "Cameras" panel in the window; this only sets what the window opens with.
+#
+# layout: single | side_by_side | stacked | picture_in_picture | grid (2 x 2)
+# Each layout shows the first 1, 2, 2, 2 or 4 entries of `views`.
+#
+# A view's mode is
+#   chase  third-person camera behind the robot, following it (drag to orbit, scroll to zoom)
+#   free   the mouse-driven simulate-style camera
+#   head   the robot's own MJCF "head" camera
+# and `robot` indexes the roster: 0 is the main robot; in --game n, robot n is the other
+# team's first player. A view of a robot that isn't in the run (robot 1 with a single
+# robot) opens as a free camera.
+layout: side_by_side
+show_panel: true
+window: [1600, 900]
+
+views:
+  - {mode: chase, robot: 0}
+  - {mode: chase, robot: 1}
+  - {mode: free}
+  - {mode: head, robot: 0}
+
+# Defaults for every chase view.
+chase:
+  distance: 2.5 # m behind the look-at point
+  elevation: -15 # deg; negative looks down
+  height: 0.3 # m the look-at point sits above the trunk
+  smoothing: 0.2 # s to (mostly) catch up with the robot's moves; 0 = rigid
+
+# Top-down minimap in the top-right corner (toggle with M or the panel's checkbox): a disc in
+# the team colour per robot, an arrow along its heading, and the numbers of the views on it.
+minimap:
+  enabled: true
+  extent: [16, 11] # m of ground shown, centred on the field (HSL M-Field is 14 x 9)
+  width: 0.24 # share of the window width

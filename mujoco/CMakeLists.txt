@@ -37,6 +37,7 @@ list(APPEND CMAKE_PREFIX_PATH "${CMAKE_CURRENT_SOURCE_DIR}/.deps/install" "/opt/
 include(cmake/FetchNUClear.cmake)
 include(cmake/FetchJson.cmake)
 include(cmake/FetchGlfw.cmake)
+include(cmake/FetchImGui.cmake)
 include(cmake/MuJoCoTarget.cmake)
 
 find_package(Threads REQUIRED)
